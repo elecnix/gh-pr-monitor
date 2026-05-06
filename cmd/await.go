@@ -143,15 +143,16 @@ func runCheckOnly(cmd *cobra.Command, service *await.Service, identity *resolver
 	conditions := await.Conditions(pr, mode)
 
 	result := &await.Result{
-		Conditions: conditions,
-		Unresolved: await.CountUnresolvedThreads(pr),
-		General:    len(pr.Comments.Nodes),
-		Conflicts:  await.HasConflicts(pr),
-		Failing:    await.FailingChecks(pr),
-		Pending:    await.PendingChecks(pr),
-		TimedOut:   false,
-		Cancelled:  false,
-		WatchedMs:  0,
+		Conditions:  conditions,
+		Unresolved:  await.CountUnresolvedThreads(pr),
+		General:     len(pr.Comments.Nodes),
+		Conflicts:   await.HasConflicts(pr),
+		Failing:     await.FailingChecks(pr),
+		Pending:     await.PendingChecks(pr),
+		Annotations: await.FailingAnnotations(pr),
+		TimedOut:    false,
+		Cancelled:   false,
+		WatchedMs:   0,
 	}
 
 	if err := encodeJSON(cmd, result); err != nil {

@@ -61,6 +61,17 @@ const AWAIT_QUERY = `query AwaitPR(
                     name
                     conclusion
                     status
+                    annotations(first: 5) {
+                      nodes {
+                        annotationLevel
+                        message
+                        path
+                        startLine
+                        endLine
+                        title
+                      }
+                      totalCount
+                    }
                   }
                 }
               }
@@ -158,9 +169,26 @@ type RunNodes struct {
 }
 
 type CheckRun struct {
-	Name        string `json:"name"`
-	Conclusion  string `json:"conclusion"`
-	Status      string `json:"status"`
+	Name        string         `json:"name"`
+	Conclusion  string         `json:"conclusion"`
+	Status      string         `json:"status"`
+	Annotations AnnotationNodes `json:"annotations"`
+}
+
+// CheckAnnotation represents a single annotation on a check run.
+type CheckAnnotation struct {
+	AnnotationLevel string `json:"annotationLevel"`
+	Message         string `json:"message"`
+	Path            string `json:"path"`
+	StartLine       *int   `json:"startLine"`
+	EndLine         *int   `json:"endLine"`
+	Title           string `json:"title"`
+}
+
+// AnnotationNodes wraps the annotations connection.
+type AnnotationNodes struct {
+	Nodes      []CheckAnnotation `json:"nodes"`
+	TotalCount int               `json:"totalCount"`
 }
 
 // Fetch retrieves PR data for polling.
@@ -347,17 +375,35 @@ const (
 	ExitError   ExitCode = 1 // Error occurred
 )
 
+// FailingAnnotations returns annotations from failing check runs.
+// Only annotations from check runs with a failure conclusion are included,
+// since those are the actionable ones.
+func FailingAnnotations(pr *PullRequest) []CheckAnnotation {
+	var annotations []CheckAnnotation
+	for _, commit := range pr.Commits.Nodes {
+		for _, suite := range commit.Commit.CheckSuites.Nodes {
+			for _, run := range suite.CheckRuns.Nodes {
+				if isFailureConclusion(run.Conclusion) {
+					annotations = append(annotations, run.Annotations.Nodes...)
+				}
+			}
+		}
+	}
+	return annotations
+}
+
 // Result represents the await polling result for JSON output.
 type Result struct {
-	Conditions []string `json:"conditions,omitempty"`
-	Unresolved int      `json:"unresolved_threads"`
-	General    int      `json:"general_comments"`
-	Conflicts  bool     `json:"has_conflicts"`
-	Failing    []string `json:"failing_checks"`
-	Pending    []string `json:"pending_checks"`
-	TimedOut   bool     `json:"timed_out"`
-	Cancelled  bool     `json:"cancelled"`
-	WatchedMs  int64    `json:"watched_ms"`
+	Conditions []string         `json:"conditions,omitempty"`
+	Unresolved int              `json:"unresolved_threads"`
+	General    int              `json:"general_comments"`
+	Conflicts  bool             `json:"has_conflicts"`
+	Failing    []string         `json:"failing_checks"`
+	Pending    []string         `json:"pending_checks"`
+	Annotations []CheckAnnotation `json:"annotations,omitempty"`
+	TimedOut   bool             `json:"timed_out"`
+	Cancelled  bool             `json:"cancelled"`
+	WatchedMs  int64            `json:"watched_ms"`
 }
 
 // WatchOptions configures the watch behavior.
@@ -447,12 +493,13 @@ func (s *Service) Watch(ctx context.Context, identity *resolver.Identity, opts W
 
 func buildResult(pr *PullRequest, conditions []string, timedOut, cancelled bool, startTime time.Time) *Result {
 	return &Result{
-		Conditions: conditions,
+		Conditions:  conditions,
 		Unresolved: CountUnresolvedThreads(pr),
 		General:    len(pr.Comments.Nodes),
 		Conflicts:  HasConflicts(pr),
 		Failing:    FailingChecks(pr),
 		Pending:    PendingChecks(pr),
+		Annotations: FailingAnnotations(pr),
 		TimedOut:   timedOut,
 		Cancelled:  cancelled,
 		WatchedMs:  time.Since(startTime).Milliseconds(),

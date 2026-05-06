@@ -391,3 +391,197 @@ func TestSuiteName(t *testing.T) {
 		assert.Equal(t, "", suiteName(suite))
 	})
 }
+
+func TestFailingAnnotations(t *testing.T) {
+	t.Run("no failing checks", func(t *testing.T) {
+		pr := &PullRequest{Commits: CommitNodes{Nodes: []Commit{{}}}}
+		assert.Empty(t, FailingAnnotations(pr))
+	})
+
+	t.Run("failing check run with annotations", func(t *testing.T) {
+		line3 := 3
+		line5 := 5
+		pr := &PullRequest{
+			Commits: CommitNodes{
+				Nodes: []Commit{
+					{
+						Commit: CommitDetails{
+							CheckSuites: SuiteNodes{
+								Nodes: []CheckSuite{
+									{
+										Conclusion: "SUCCESS",
+										CheckRuns: RunNodes{
+											Nodes: []CheckRun{
+												{
+													Name:       "lint",
+													Conclusion: "FAILURE",
+													Annotations: AnnotationNodes{
+														Nodes: []CheckAnnotation{
+															{
+																AnnotationLevel: "FAILURE",
+																Message:         "unused variable",
+																Path:            "main.go",
+																StartLine:       &line3,
+																EndLine:         &line5,
+																Title:           "no-unused-vars",
+															},
+														},
+														TotalCount: 1,
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		annotations := FailingAnnotations(pr)
+		assert.Len(t, annotations, 1)
+		assert.Equal(t, "FAILURE", annotations[0].AnnotationLevel)
+		assert.Equal(t, "unused variable", annotations[0].Message)
+		assert.Equal(t, "main.go", annotations[0].Path)
+		assert.Equal(t, 3, *annotations[0].StartLine)
+		assert.Equal(t, 5, *annotations[0].EndLine)
+		assert.Equal(t, "no-unused-vars", annotations[0].Title)
+	})
+
+	t.Run("successful check run excludes annotations", func(t *testing.T) {
+		line1 := 1
+		pr := &PullRequest{
+			Commits: CommitNodes{
+				Nodes: []Commit{
+					{
+						Commit: CommitDetails{
+							CheckSuites: SuiteNodes{
+								Nodes: []CheckSuite{
+									{
+										Conclusion: "SUCCESS",
+										CheckRuns: RunNodes{
+											Nodes: []CheckRun{
+												{
+													Name:       "build",
+													Conclusion: "SUCCESS",
+													Annotations: AnnotationNodes{
+														Nodes: []CheckAnnotation{
+															{
+																AnnotationLevel: "NOTICE",
+																Message:         "info only",
+																Path:            "main.go",
+																StartLine:       &line1,
+																EndLine:         &line1,
+																Title:           "info",
+															},
+														},
+														TotalCount: 1,
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		assert.Empty(t, FailingAnnotations(pr))
+	})
+
+	t.Run("multiple failing check runs", func(t *testing.T) {
+		line10 := 10
+		line20 := 20
+		pr := &PullRequest{
+			Commits: CommitNodes{
+				Nodes: []Commit{
+					{
+						Commit: CommitDetails{
+							CheckSuites: SuiteNodes{
+								Nodes: []CheckSuite{
+									{
+										CheckRuns: RunNodes{
+											Nodes: []CheckRun{
+												{
+													Name:       "lint",
+													Conclusion: "FAILURE",
+													Annotations: AnnotationNodes{
+														Nodes: []CheckAnnotation{
+															{AnnotationLevel: "WARNING", Message: "w1", Path: "a.go", StartLine: &line10, EndLine: &line10, Title: "t1"},
+														},
+														TotalCount: 1,
+													},
+												},
+												{
+													Name:       "test",
+													Conclusion: "ERROR",
+													Annotations: AnnotationNodes{
+														Nodes: []CheckAnnotation{
+															{AnnotationLevel: "FAILURE", Message: "f1", Path: "b.go", StartLine: &line20, EndLine: &line20, Title: "t2"},
+														},
+														TotalCount: 1,
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		annotations := FailingAnnotations(pr)
+		assert.Len(t, annotations, 2)
+		assert.Equal(t, "w1", annotations[0].Message)
+		assert.Equal(t, "f1", annotations[1].Message)
+	})
+
+	t.Run("nil start/end line", func(t *testing.T) {
+		pr := &PullRequest{
+			Commits: CommitNodes{
+				Nodes: []Commit{
+					{
+						Commit: CommitDetails{
+							CheckSuites: SuiteNodes{
+								Nodes: []CheckSuite{
+									{
+										CheckRuns: RunNodes{
+											Nodes: []CheckRun{
+												{
+													Name:       "sonar",
+													Conclusion: "FAILURE",
+													Annotations: AnnotationNodes{
+														Nodes: []CheckAnnotation{
+															{
+																AnnotationLevel: "FAILURE",
+																Message:         "bug found",
+																Path:            "app.js",
+																StartLine:       nil,
+																EndLine:          nil,
+																Title:           "Bug",
+															},
+														},
+														TotalCount: 1,
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		annotations := FailingAnnotations(pr)
+		assert.Len(t, annotations, 1)
+		assert.Nil(t, annotations[0].StartLine)
+		assert.Nil(t, annotations[0].EndLine)
+	})
+}
