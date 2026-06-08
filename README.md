@@ -27,8 +27,8 @@ GitHub's built-in `gh` tool does not show inline comments, review threads, or th
 ## Installation
 
 ```sh
-gh extension install v2nic/gh-pr-review
-gh extension upgrade v2nic/gh-pr-review  # Update existing installation
+gh extension install elecnix/gh-pr-review
+gh extension upgrade elecnix/gh-pr-review  # Update existing installation
 ```
 
 ### Agent Skill
@@ -36,7 +36,7 @@ gh extension upgrade v2nic/gh-pr-review  # Update existing installation
 Register with your AI agent using the [SKILL.md](skills/gh-pr-review/SKILL.md) definition:
 
 ```bash
-npx skills add v2nic/gh-pr-review
+npx skills add elecnix/gh-pr-review
 ```
 
 ## Commands

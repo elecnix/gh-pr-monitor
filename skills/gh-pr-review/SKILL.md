@@ -37,7 +37,7 @@ This tool is particularly useful for:
 First, ensure the extension is installed:
 
 ```sh
-gh extension install v2nic/gh-pr-review
+gh extension install elecnix/gh-pr-review
 ```
 
 ## Core Commands

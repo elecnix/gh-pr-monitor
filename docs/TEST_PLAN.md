@@ -37,7 +37,7 @@ gh repo delete <username>/gh-pr-review-test --yes
 ## Smoke Testing Commands
 
 ```bash
-gh extension install v2nic/gh-pr-review
+gh extension install elecnix/gh-pr-review
 cd /tmp/gh-pr-review-test
 gh pr-review review view --repo <username>/gh-pr-review-test --pr 1
 gh pr-review review --start --repo <username>/gh-pr-review-test --pr 1
