@@ -69,8 +69,10 @@ const AWAIT_QUERY = `query AwaitPR(
                         annotationLevel
                         message
                         path
-                        startLine
-                        endLine
+                        location {
+                          start { line column }
+                          end { line column }
+                        }
                         title
                       }
                       totalCount
@@ -180,14 +182,35 @@ type CheckRun struct {
 	Annotations AnnotationNodes `json:"annotations"`
 }
 
+// AnnotationPosition represents a position (line/column) in an annotation location.
+type AnnotationPosition struct {
+	Line   *int `json:"line"`
+	Column *int `json:"column"`
+}
+
+// AnnotationLocation represents the start/end span of a check annotation.
+type AnnotationLocation struct {
+	Start AnnotationPosition `json:"start"`
+	End   AnnotationPosition `json:"end"`
+}
+
 // CheckAnnotation represents a single annotation on a check run.
 type CheckAnnotation struct {
-	AnnotationLevel string `json:"annotationLevel"`
-	Message         string `json:"message"`
-	Path            string `json:"path"`
-	StartLine       *int   `json:"startLine"`
-	EndLine         *int   `json:"endLine"`
-	Title           string `json:"title"`
+	AnnotationLevel string             `json:"annotationLevel"`
+	Message         string             `json:"message"`
+	Path            string             `json:"path"`
+	Location        AnnotationLocation `json:"location"`
+	Title           string             `json:"title"`
+}
+
+// StartLine returns the start line or nil for backward compatibility.
+func (a *CheckAnnotation) StartLine() *int {
+	return a.Location.Start.Line
+}
+
+// EndLine returns the end line or nil for backward compatibility.
+func (a *CheckAnnotation) EndLine() *int {
+	return a.Location.End.Line
 }
 
 // AnnotationNodes wraps the annotations connection.

@@ -433,8 +433,7 @@ func TestFailingAnnotations(t *testing.T) {
 																AnnotationLevel: "FAILURE",
 																Message:         "unused variable",
 																Path:            "main.go",
-																StartLine:       &line3,
-																EndLine:         &line5,
+																Location:        AnnotationLocation{Start: AnnotationPosition{Line: &line3, Column: nil}, End: AnnotationPosition{Line: &line5, Column: nil}},
 																Title:           "no-unused-vars",
 															},
 														},
@@ -456,8 +455,8 @@ func TestFailingAnnotations(t *testing.T) {
 		assert.Equal(t, "FAILURE", annotations[0].AnnotationLevel)
 		assert.Equal(t, "unused variable", annotations[0].Message)
 		assert.Equal(t, "main.go", annotations[0].Path)
-		assert.Equal(t, 3, *annotations[0].StartLine)
-		assert.Equal(t, 5, *annotations[0].EndLine)
+		assert.Equal(t, 3, *annotations[0].StartLine())
+		assert.Equal(t, 5, *annotations[0].EndLine())
 		assert.Equal(t, "no-unused-vars", annotations[0].Title)
 	})
 
@@ -483,8 +482,7 @@ func TestFailingAnnotations(t *testing.T) {
 																AnnotationLevel: "NOTICE",
 																Message:         "info only",
 																Path:            "main.go",
-																StartLine:       &line1,
-																EndLine:         &line1,
+																Location:        AnnotationLocation{Start: AnnotationPosition{Line: &line1, Column: nil}, End: AnnotationPosition{Line: &line1, Column: nil}},
 																Title:           "info",
 															},
 														},
@@ -522,7 +520,7 @@ func TestFailingAnnotations(t *testing.T) {
 													Conclusion: "FAILURE",
 													Annotations: AnnotationNodes{
 														Nodes: []CheckAnnotation{
-															{AnnotationLevel: "WARNING", Message: "w1", Path: "a.go", StartLine: &line10, EndLine: &line10, Title: "t1"},
+															{AnnotationLevel: "WARNING", Message: "w1", Path: "a.go", Location: AnnotationLocation{Start: AnnotationPosition{Line: &line10, Column: nil}, End: AnnotationPosition{Line: &line10, Column: nil}}, Title: "t1"},
 														},
 														TotalCount: 1,
 													},
@@ -532,7 +530,7 @@ func TestFailingAnnotations(t *testing.T) {
 													Conclusion: "ERROR",
 													Annotations: AnnotationNodes{
 														Nodes: []CheckAnnotation{
-															{AnnotationLevel: "FAILURE", Message: "f1", Path: "b.go", StartLine: &line20, EndLine: &line20, Title: "t2"},
+															{AnnotationLevel: "FAILURE", Message: "f1", Path: "b.go", Location: AnnotationLocation{Start: AnnotationPosition{Line: &line20, Column: nil}, End: AnnotationPosition{Line: &line20, Column: nil}}, Title: "t2"},
 														},
 														TotalCount: 1,
 													},
@@ -573,8 +571,7 @@ func TestFailingAnnotations(t *testing.T) {
 																AnnotationLevel: "FAILURE",
 																Message:         "bug found",
 																Path:            "app.js",
-																StartLine:       nil,
-																EndLine:          nil,
+																Location:        AnnotationLocation{Start: AnnotationPosition{Line: nil, Column: nil}, End: AnnotationPosition{Line: nil, Column: nil}},
 																Title:           "Bug",
 															},
 														},
@@ -593,8 +590,8 @@ func TestFailingAnnotations(t *testing.T) {
 		}
 		annotations := FailingAnnotations(pr)
 		assert.Len(t, annotations, 1)
-		assert.Nil(t, annotations[0].StartLine)
-		assert.Nil(t, annotations[0].EndLine)
+		assert.Nil(t, annotations[0].StartLine())
+		assert.Nil(t, annotations[0].EndLine())
 	})
 }
 
