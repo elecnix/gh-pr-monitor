@@ -1,0 +1,183 @@
+package monitor
+
+// EventType is a stable identifier for a kind of detected change.
+type EventType string
+
+const (
+	EventNewFailingChecks       EventType = "new-failing-checks"
+	EventCIAllGreen             EventType = "ci-all-green"
+	EventNewUnresolvedThreads   EventType = "new-unresolved-threads"
+	EventNewGeneralComments     EventType = "new-general-comments"
+	EventConflict               EventType = "conflict"
+	EventReviewApproved         EventType = "review-approved"
+	EventReviewChangesRequested EventType = "review-changes-requested"
+	EventReviewDismissed        EventType = "review-dismissed"
+	EventNewCommit              EventType = "new-commit"
+	EventMerged                 EventType = "merged"
+	EventClosed                 EventType = "closed"
+)
+
+// Event describes a single genuinely-new change between two snapshots. Only the
+// fields relevant to Type are populated.
+type Event struct {
+	Type EventType `json:"type"`
+
+	// Checks holds the newly-failing check names (EventNewFailingChecks).
+	Checks []string `json:"checks,omitempty"`
+
+	// Threads holds the new/updated unresolved threads (EventNewUnresolvedThreads).
+	Threads []ThreadSummary `json:"threads,omitempty"`
+
+	// Comments holds the new general comments (EventNewGeneralComments).
+	Comments []GeneralComment `json:"comments,omitempty"`
+
+	// ReviewState / ReviewAuthor describe a review transition
+	// (EventReviewApproved / EventReviewChangesRequested / EventReviewDismissed).
+	ReviewState  string `json:"review_state,omitempty"`
+	ReviewAuthor string `json:"review_author,omitempty"`
+
+	// Commit is the new head commit (EventNewCommit).
+	Commit *CommitSummary `json:"commit,omitempty"`
+}
+
+// Diff returns the genuinely-new changes between prev and curr.
+//
+// First-poll semantics (documented decision): when prev is nil the call is a
+// baseline — it establishes state and emits NO events. This mirrors pi's "first
+// poll learns state silently" for the commit oid and review decision, and
+// extends it to every kind so the first snapshot never spams pre-existing
+// comments, threads, failing checks, or conflicts as if they were new. Callers
+// that want to surface the current state on first poll should read the PRStatus
+// directly rather than relying on Diff.
+func Diff(prev *PRStatus, curr *PRStatus) []Event {
+	if prev == nil || curr == nil {
+		return nil
+	}
+
+	var events []Event
+
+	// Conflict newly appeared.
+	if curr.Conflict && !prev.Conflict {
+		events = append(events, Event{Type: EventConflict})
+	}
+
+	// Checks failing now that were not failing before.
+	if newFailing := diffNewStrings(prev.FailingChecks, curr.FailingChecks); len(newFailing) > 0 {
+		events = append(events, Event{Type: EventNewFailingChecks, Checks: newFailing})
+	}
+
+	// CI went fully green: prev had work in flight or failing, curr has none.
+	prevHadWork := len(prev.FailingChecks) > 0 || len(prev.PendingChecks) > 0
+	currClean := len(curr.FailingChecks) == 0 && len(curr.PendingChecks) == 0
+	if prevHadWork && currClean {
+		events = append(events, Event{Type: EventCIAllGreen})
+	}
+
+	// New or updated unresolved threads.
+	if newThreads := diffNewThreads(prev.UnresolvedThreads, curr.UnresolvedThreads); len(newThreads) > 0 {
+		events = append(events, Event{Type: EventNewUnresolvedThreads, Threads: newThreads})
+	}
+
+	// New general comments.
+	if newComments := diffNewComments(prev.GeneralComments, curr.GeneralComments); len(newComments) > 0 {
+		events = append(events, Event{Type: EventNewGeneralComments, Comments: newComments})
+	}
+
+	// Review decision transitions (mirrors analyzer.ts formatStatusUpdate).
+	if curr.ReviewDecision != prev.ReviewDecision {
+		switch {
+		case curr.ReviewDecision == "APPROVED":
+			events = append(events, Event{Type: EventReviewApproved, ReviewState: curr.ReviewDecision, ReviewAuthor: curr.ReviewAuthor})
+		case curr.ReviewDecision == "CHANGES_REQUESTED":
+			events = append(events, Event{Type: EventReviewChangesRequested, ReviewState: curr.ReviewDecision, ReviewAuthor: curr.ReviewAuthor})
+		case (curr.ReviewDecision == "" || curr.ReviewDecision == "DISMISSED") &&
+			prev.ReviewDecision != "" && prev.ReviewDecision != "PENDING" && prev.ReviewDecision != "DISMISSED":
+			events = append(events, Event{Type: EventReviewDismissed, ReviewState: curr.ReviewDecision, ReviewAuthor: curr.ReviewAuthor})
+		}
+	}
+
+	// New head commit.
+	if curr.LastCommit.Oid != "" && curr.LastCommit.Oid != prev.LastCommit.Oid {
+		commit := curr.LastCommit
+		events = append(events, Event{Type: EventNewCommit, Commit: &commit})
+	}
+
+	// State transitions.
+	if curr.Merged && !prev.Merged {
+		events = append(events, Event{Type: EventMerged})
+	} else if curr.State == "CLOSED" && prev.State != "CLOSED" {
+		events = append(events, Event{Type: EventClosed})
+	}
+
+	return events
+}
+
+// diffNewStrings returns items in curr not present in prev, preserving order.
+func diffNewStrings(prev, curr []string) []string {
+	seen := make(map[string]bool, len(prev))
+	for _, p := range prev {
+		seen[p] = true
+	}
+	var out []string
+	for _, c := range curr {
+		if !seen[c] {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// diffNewComments returns comments whose ids are absent from prev.
+func diffNewComments(prev, curr []GeneralComment) []GeneralComment {
+	seen := make(map[string]bool, len(prev))
+	for _, p := range prev {
+		seen[p.ID] = true
+	}
+	var out []GeneralComment
+	for _, c := range curr {
+		if !seen[c.ID] {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// diffNewThreads returns threads that are "new" per isThreadNew: a thread whose
+// id is absent from prev, or that gained a comment id not seen in prev.
+func diffNewThreads(prev, curr []ThreadSummary) []ThreadSummary {
+	prevIDs := make(map[string]bool, len(prev))
+	prevCommentIDs := make(map[string]map[string]bool, len(prev))
+	for _, t := range prev {
+		prevIDs[t.ID] = true
+		ids := make(map[string]bool, len(t.CommentIDs))
+		for _, cid := range t.CommentIDs {
+			ids[cid] = true
+		}
+		prevCommentIDs[t.ID] = ids
+	}
+	var out []ThreadSummary
+	for _, t := range curr {
+		if isThreadNew(t, prevIDs, prevCommentIDs) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// isThreadNew reports whether a thread has content not seen in the previous
+// snapshot: it did not exist before, or one of its current comment ids is new.
+func isThreadNew(thread ThreadSummary, prevIDs map[string]bool, prevCommentIDs map[string]map[string]bool) bool {
+	if !prevIDs[thread.ID] {
+		return true
+	}
+	prevCids, ok := prevCommentIDs[thread.ID]
+	if !ok {
+		return true
+	}
+	for _, cid := range thread.CommentIDs {
+		if !prevCids[cid] {
+			return true
+		}
+	}
+	return false
+}
