@@ -1,13 +1,6 @@
 ---
 name: gh-pr-monitor
 description: View and manage inline GitHub PR review comments with full thread context from the terminal. Also monitor PRs for new comments, CI failures, conflicts, and other events.
-features:
-  - View and reply to inline PR review comments
-  - Resolve and manage review threads
-  - Monitor PRs continuously with streaming NDJSON events
-  - Poll PRs until they need attention (await)
-  - Manage draft PR status
-  - Add reactions to comments
 ---
 
 # gh-pr-monitor
