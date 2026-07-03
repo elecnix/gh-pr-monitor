@@ -44,6 +44,7 @@ npx skills add elecnix/gh-pr-monitor
 | Command                         | Description                                                           |
 | ------------------------------- | --------------------------------------------------------------------- |
 | `await`                         | Poll a PR until it needs attention (comments, conflicts, CI failures) |
+| `monitor`                       | Continuously watch a PR, streaming one event per change (NDJSON)      |
 | `draft status`                  | Check if a pull request is a draft                                    |
 | `draft mark`                    | Mark a pull request as draft                                          |
 | `draft ready`                   | Mark a pull request as ready for review                               |
@@ -193,6 +194,31 @@ Exit codes:
 - `--interval <seconds>` - Polling interval (default: 300 = 5 minutes)
 - `--debounce <seconds>` - Debounce duration (default: 30)
 - `--check-only` - Check once and exit without polling
+
+### Monitoring a PR (streaming)
+
+Where `await` returns once when a PR needs attention, `monitor` runs continuously and emits **one event per genuinely-new change** — new review threads, general comments, failing/green CI, merge conflicts, review decisions, new commits, and merge/close. Each event is one NDJSON line on stdout, so a persistent watcher can surface each line as it arrives. The loop auto-stops when the PR is merged or closed, and idle polling backs off exponentially (capped at 5 minutes).
+
+```sh
+# Stream events until the PR is merged/closed (NDJSON, one event per line)
+gh pr-monitor monitor -R owner/repo 42
+
+# Human-readable rendered messages instead of JSON
+gh pr-monitor monitor --text -R owner/repo 42
+
+# One-shot: emit the current actionable state and exit
+gh pr-monitor monitor --once -R owner/repo 42
+```
+
+**Monitor flags:**
+
+- `--interval <seconds>` - Base polling interval (default: 60, min 10)
+- `--timeout <seconds>` - Maximum watch time (default: 0 = until merged/closed)
+- `--ignored-bots <a,b>` - Author logins whose general comments are ignored
+- `--once` - Fetch once, emit the current actionable state, and exit
+- `--text` - Emit the rendered message per event instead of NDJSON
+
+Notification wording is templated and user-overridable via `${XDG_CONFIG_HOME:-~/.config}/gh-pr-monitor/preferences.json`.
 
 ### Additional Flags
 

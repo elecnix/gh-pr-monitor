@@ -329,6 +329,23 @@ gh pr-monitor await --mode comments --timeout 3600 -R owner/repo <pr>
 - `--debounce <seconds>` - Debounce duration (default: 30)
 - `--check-only` - Check once and exit without polling
 
+### Continuously Monitor a PR (streaming)
+
+Unlike `await` (which returns once), `monitor` runs continuously and emits one NDJSON event per genuinely-new change until the PR is merged or closed:
+
+```sh
+# Stream events (NDJSON, one per line)
+gh pr-monitor monitor -R owner/repo <pr>
+
+# Human-readable messages instead of JSON
+gh pr-monitor monitor --text -R owner/repo <pr>
+
+# One-shot: current actionable state, then exit
+gh pr-monitor monitor --once -R owner/repo <pr>
+```
+
+**Monitor flags:** `--interval` (default 60, min 10), `--timeout` (default 0 = until merged/closed), `--ignored-bots <a,b>`, `--once`, `--text`. Notification wording is templated and overridable via `${XDG_CONFIG_HOME:-~/.config}/gh-pr-monitor/preferences.json`.
+
 ### Create Review with Inline Comments
 
 1. Start: `gh pr-monitor review --start -R owner/repo <pr>`
