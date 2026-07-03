@@ -1,0 +1,533 @@
+// Package monitor provides a change-detection / snapshot engine for a pull
+// request. It fetches a rich GraphQL snapshot, distills it into a stable
+// PRStatus, and diffs two snapshots into a set of Events describing what
+// genuinely changed. A future `monitor` command consumes this engine.
+//
+// The logic is ported from the pi-ghpr-monitor TypeScript extension
+// (analyzer.ts): the 👍-acknowledgement filtering, co-author trailer parsing,
+// and "is this thread new" dedup all mirror that implementation. It also
+// duplicates the small failing/pending check classifiers from internal/await
+// (they are unexported there) so this package stays self-contained.
+package monitor
+
+import (
+	"fmt"
+	"regexp"
+	"strings"
+
+	"github.com/elecnix/gh-pr-monitor/internal/ghcli"
+	"github.com/elecnix/gh-pr-monitor/internal/resolver"
+)
+
+// Service fetches PR monitoring data through the GitHub API.
+type Service struct {
+	API ghcli.API
+}
+
+// MONITOR_QUERY fetches the rich snapshot a monitor needs for a single PR:
+// state, comments (+👍), review threads (+👍), mergeability, the latest review
+// decision, and the head commit with its authors, message, checks, and
+// old-style statuses. The commit author/message fields are intentionally
+// richer than pi's snapshot: pi documented author/co-author support but never
+// wired the query, so we fetch it here.
+const MONITOR_QUERY = `query MonitorPR($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $number) {
+      state
+      merged
+      mergeable
+      mergeStateStatus
+      comments(last: 25) {
+        nodes {
+          id
+          body
+          author { login }
+          createdAt
+          reactionGroups { content users { totalCount } }
+        }
+      }
+      reviewThreads(last: 25) {
+        nodes {
+          id
+          isResolved
+          isOutdated
+          path
+          line
+          comments(last: 25) {
+            nodes {
+              id
+              body
+              author { login }
+              createdAt
+              reactionGroups { content users { totalCount } }
+            }
+          }
+        }
+      }
+      reviews(last: 1) {
+        nodes { state author { login } submittedAt }
+      }
+      commits(last: 1) {
+        nodes {
+          commit {
+            oid
+            messageHeadline
+            message
+            authors(first: 10) { nodes { name user { login } } }
+            checkSuites(last: 10) {
+              nodes {
+                conclusion
+                status
+                app { name slug }
+                checkRuns(last: 10) {
+                  nodes { name conclusion status }
+                }
+              }
+            }
+            status { contexts { state context description targetUrl } }
+          }
+        }
+      }
+    }
+  }
+}`
+
+// QueryResponse mirrors the GraphQL envelope's data shape.
+type QueryResponse struct {
+	Repository struct {
+		PullRequest *PullRequest `json:"pullRequest"`
+	} `json:"repository"`
+}
+
+// PullRequest is the raw GraphQL PR payload.
+type PullRequest struct {
+	State         string       `json:"state"`
+	Merged        bool         `json:"merged"`
+	Mergeable     string       `json:"mergeable"`
+	MergeState    string       `json:"mergeStateStatus"`
+	Comments      CommentNodes `json:"comments"`
+	ReviewThreads ThreadNodes  `json:"reviewThreads"`
+	Reviews       ReviewNodes  `json:"reviews"`
+	Commits       CommitNodes  `json:"commits"`
+}
+
+type CommentNodes struct {
+	Nodes []Comment `json:"nodes"`
+}
+
+// Comment covers both IssueComment (general) and PullRequestReviewComment
+// (in-thread) shapes; path/line are only populated for review comments.
+type Comment struct {
+	ID     string `json:"id"`
+	Body   string `json:"body"`
+	Author struct {
+		Login string `json:"login"`
+	} `json:"author"`
+	CreatedAt      string          `json:"createdAt"`
+	ReactionGroups []ReactionGroup `json:"reactionGroups"`
+	Path           string          `json:"path"`
+	Line           *int            `json:"line"`
+}
+
+// ReactionGroup is one content bucket of a comment's reactions.
+type ReactionGroup struct {
+	Content string `json:"content"`
+	Users   struct {
+		TotalCount int `json:"totalCount"`
+	} `json:"users"`
+}
+
+type ThreadNodes struct {
+	Nodes []ReviewThread `json:"nodes"`
+}
+
+type ReviewThread struct {
+	ID         string       `json:"id"`
+	IsResolved bool         `json:"isResolved"`
+	IsOutdated bool         `json:"isOutdated"`
+	Path       string       `json:"path"`
+	Line       *int         `json:"line"`
+	Comments   CommentNodes `json:"comments"`
+}
+
+type ReviewNodes struct {
+	Nodes []Review `json:"nodes"`
+}
+
+type Review struct {
+	State  string `json:"state"`
+	Author struct {
+		Login string `json:"login"`
+	} `json:"author"`
+	SubmittedAt string `json:"submittedAt"`
+}
+
+type CommitNodes struct {
+	Nodes []Commit `json:"nodes"`
+}
+
+type Commit struct {
+	Commit CommitDetails `json:"commit"`
+}
+
+type CommitDetails struct {
+	Oid             string        `json:"oid"`
+	MessageHeadline string        `json:"messageHeadline"`
+	Message         string        `json:"message"`
+	Authors         GitActorNodes `json:"authors"`
+	CheckSuites     SuiteNodes    `json:"checkSuites"`
+	Status          *CommitStatus `json:"status"`
+}
+
+type GitActorNodes struct {
+	Nodes []GitActor `json:"nodes"`
+}
+
+type GitActor struct {
+	Name string `json:"name"`
+	User *struct {
+		Login string `json:"login"`
+	} `json:"user"`
+}
+
+type SuiteNodes struct {
+	Nodes []CheckSuite `json:"nodes"`
+}
+
+type CheckSuite struct {
+	Conclusion string   `json:"conclusion"`
+	Status     string   `json:"status"`
+	App        AppInfo  `json:"app"`
+	CheckRuns  RunNodes `json:"checkRuns"`
+}
+
+type AppInfo struct {
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+}
+
+type RunNodes struct {
+	Nodes []CheckRun `json:"nodes"`
+}
+
+type CheckRun struct {
+	Name       string `json:"name"`
+	Conclusion string `json:"conclusion"`
+	Status     string `json:"status"`
+}
+
+type CommitStatus struct {
+	Contexts []StatusContext `json:"contexts"`
+}
+
+type StatusContext struct {
+	State       string `json:"state"`
+	Context     string `json:"context"`
+	Description string `json:"description"`
+	TargetURL   string `json:"targetUrl"`
+}
+
+// Fetch retrieves the monitoring snapshot for a PR.
+func (s *Service) Fetch(identity *resolver.Identity, number int) (*QueryResponse, error) {
+	var result QueryResponse
+	err := s.API.GraphQL(MONITOR_QUERY, map[string]interface{}{
+		"owner":  identity.Owner,
+		"repo":   identity.Repo,
+		"number": number,
+	}, &result)
+	if err != nil {
+		return nil, err
+	}
+	if result.Repository.PullRequest == nil {
+		return nil, fmt.Errorf("pull request not found or not accessible")
+	}
+	return &result, nil
+}
+
+// ---------------------------------------------------------------------------
+// Snapshot types
+// ---------------------------------------------------------------------------
+
+// ThreadSummary is a distilled unresolved review thread.
+type ThreadSummary struct {
+	ID         string   `json:"id"`
+	Path       string   `json:"path,omitempty"`
+	Line       *int     `json:"line,omitempty"`
+	CommentIDs []string `json:"comment_ids"`
+}
+
+// GeneralComment is a distilled, actionable general PR comment.
+type GeneralComment struct {
+	ID     string `json:"id"`
+	Author string `json:"author"`
+	Body   string `json:"body"`
+}
+
+// CommitSummary describes the head commit, including parsed co-authors.
+type CommitSummary struct {
+	Oid             string   `json:"oid"`
+	ShortOid        string   `json:"short_oid"`
+	Author          string   `json:"author"`
+	Coauthors       []string `json:"coauthors,omitempty"`
+	MessageHeadline string   `json:"message_headline"`
+}
+
+// PRStatus is the stable snapshot the change detector diffs.
+type PRStatus struct {
+	State             string           `json:"state"`
+	Merged            bool             `json:"merged"`
+	UnresolvedThreads []ThreadSummary  `json:"unresolved_threads"`
+	GeneralComments   []GeneralComment `json:"general_comments"`
+	Conflict          bool             `json:"conflict"`
+	FailingChecks     []string         `json:"failing_checks"`
+	PendingChecks     []string         `json:"pending_checks"`
+	ReviewDecision    string           `json:"review_decision,omitempty"`
+	ReviewAuthor      string           `json:"review_author,omitempty"`
+	LastCommit        CommitSummary    `json:"last_commit"`
+}
+
+// SnapshotOptions configures snapshot building.
+type SnapshotOptions struct {
+	// IgnoredBots are author logins whose general comments are dropped.
+	IgnoredBots []string
+}
+
+// Snapshot distills a raw PR payload into a PRStatus.
+//
+// Filtering rules (ported from analyzer.ts):
+//   - An unresolved thread is included only when it is not resolved AND its
+//     last comment is not 👍-acknowledged.
+//   - A general comment is included only when it is not 👍-acknowledged AND its
+//     author is not in opts.IgnoredBots.
+func Snapshot(pr *PullRequest, opts SnapshotOptions) *PRStatus {
+	ignored := make(map[string]bool, len(opts.IgnoredBots))
+	for _, b := range opts.IgnoredBots {
+		ignored[b] = true
+	}
+
+	status := &PRStatus{
+		State:             pr.State,
+		Merged:            pr.Merged,
+		Conflict:          pr.Mergeable == "CONFLICTING",
+		UnresolvedThreads: []ThreadSummary{},
+		GeneralComments:   []GeneralComment{},
+		FailingChecks:     failingChecks(pr),
+		PendingChecks:     pendingChecks(pr),
+	}
+
+	for _, t := range pr.ReviewThreads.Nodes {
+		if t.IsResolved {
+			continue
+		}
+		if last := lastComment(t.Comments.Nodes); last != nil && isAcknowledged(last) {
+			continue
+		}
+		ids := make([]string, 0, len(t.Comments.Nodes))
+		for i := range t.Comments.Nodes {
+			ids = append(ids, t.Comments.Nodes[i].ID)
+		}
+		status.UnresolvedThreads = append(status.UnresolvedThreads, ThreadSummary{
+			ID:         t.ID,
+			Path:       t.Path,
+			Line:       t.Line,
+			CommentIDs: ids,
+		})
+	}
+
+	for i := range pr.Comments.Nodes {
+		c := &pr.Comments.Nodes[i]
+		if isAcknowledged(c) {
+			continue
+		}
+		if ignored[c.Author.Login] {
+			continue
+		}
+		status.GeneralComments = append(status.GeneralComments, GeneralComment{
+			ID:     c.ID,
+			Author: c.Author.Login,
+			Body:   c.Body,
+		})
+	}
+
+	status.ReviewDecision, status.ReviewAuthor = reviewDecision(pr)
+	status.LastCommit = commitSummary(pr)
+
+	return status
+}
+
+// ---------------------------------------------------------------------------
+// Helpers / predicates
+// ---------------------------------------------------------------------------
+
+var failureConclusions = map[string]bool{
+	"FAILURE": true, "ERROR": true, "TIMED_OUT": true, "CANCELLED": true, "ACTION_REQUIRED": true,
+}
+
+var pendingStatuses = map[string]bool{
+	"IN_PROGRESS": true, "QUEUED": true, "WAITING": true, "STARTUP_FAILURE": true,
+}
+
+var failureCommitStates = map[string]bool{"FAILURE": true, "ERROR": true}
+
+var pendingCommitStates = map[string]bool{"PENDING": true, "EXPECTED": true}
+
+func isFailureConclusion(c string) bool { return failureConclusions[c] }
+func isPendingStatus(s string) bool     { return pendingStatuses[s] }
+
+// acknowledgedReactions are the reaction contents that acknowledge a comment.
+var acknowledgedReactions = map[string]bool{"THUMBS_UP": true}
+
+// isAcknowledged reports whether a comment carries an acknowledging reaction.
+func isAcknowledged(c *Comment) bool {
+	for _, g := range c.ReactionGroups {
+		if acknowledgedReactions[g.Content] && g.Users.TotalCount > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func lastComment(nodes []Comment) *Comment {
+	if len(nodes) == 0 {
+		return nil
+	}
+	return &nodes[len(nodes)-1]
+}
+
+// suiteName resolves a display name for a check suite.
+func suiteName(s *CheckSuite) string {
+	if s.App.Name != "" {
+		return s.App.Name
+	}
+	return s.App.Slug
+}
+
+// failingChecks collects names of failing check suites/runs plus old-style
+// status contexts in FAILURE/ERROR states.
+func failingChecks(pr *PullRequest) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(name string) {
+		if name != "" && !seen[name] {
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	for i := range pr.Commits.Nodes {
+		c := &pr.Commits.Nodes[i].Commit
+		for j := range c.CheckSuites.Nodes {
+			suite := &c.CheckSuites.Nodes[j]
+			if isFailureConclusion(suite.Conclusion) {
+				add(suiteName(suite))
+			}
+			for _, run := range suite.CheckRuns.Nodes {
+				if isFailureConclusion(run.Conclusion) {
+					name := run.Name
+					if name == "" {
+						name = suiteName(suite)
+					}
+					add(name)
+				}
+			}
+		}
+		if c.Status != nil {
+			for _, ctx := range c.Status.Contexts {
+				if failureCommitStates[ctx.State] {
+					add(ctx.Context)
+				}
+			}
+		}
+	}
+	return out
+}
+
+// pendingChecks collects names of pending check suites plus old-style status
+// contexts in PENDING/EXPECTED states.
+func pendingChecks(pr *PullRequest) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(name string) {
+		if name != "" && !seen[name] {
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	for i := range pr.Commits.Nodes {
+		c := &pr.Commits.Nodes[i].Commit
+		for j := range c.CheckSuites.Nodes {
+			suite := &c.CheckSuites.Nodes[j]
+			if isPendingStatus(suite.Status) {
+				add(suiteName(suite))
+			}
+		}
+		if c.Status != nil {
+			for _, ctx := range c.Status.Contexts {
+				if pendingCommitStates[ctx.State] {
+					add(ctx.Context)
+				}
+			}
+		}
+	}
+	return out
+}
+
+// reviewDecision returns the state and author of the latest non-PENDING review.
+// Returns empty strings when there are no reviews or all are PENDING.
+func reviewDecision(pr *PullRequest) (state, author string) {
+	nodes := pr.Reviews.Nodes
+	for i := len(nodes) - 1; i >= 0; i-- {
+		if nodes[i].State != "PENDING" {
+			return nodes[i].State, nodes[i].Author.Login
+		}
+	}
+	return "", ""
+}
+
+func commitSummary(pr *PullRequest) CommitSummary {
+	if len(pr.Commits.Nodes) == 0 {
+		return CommitSummary{}
+	}
+	c := pr.Commits.Nodes[0].Commit
+	author := ""
+	if len(c.Authors.Nodes) > 0 {
+		a := c.Authors.Nodes[0]
+		if a.User != nil && a.User.Login != "" {
+			author = a.User.Login
+		} else {
+			author = a.Name
+		}
+	}
+	short := c.Oid
+	if len(short) > 7 {
+		short = short[:7]
+	}
+	return CommitSummary{
+		Oid:             c.Oid,
+		ShortOid:        short,
+		Author:          author,
+		Coauthors:       parseCoauthors(c.Message),
+		MessageHeadline: c.MessageHeadline,
+	}
+}
+
+var coauthorRE = regexp.MustCompile(`(?im)^[ \t]*co-authored-by:[ \t]*(.+?)[ \t]*$`)
+var trailingEmailRE = regexp.MustCompile(`[ \t]*<[^>]*>[ \t]*$`)
+
+// parseCoauthors extracts co-author display names from Co-authored-by trailers
+// in a commit message, stripping any trailing <email>, de-duplicated and in
+// order of appearance. Returns nil when there are none.
+func parseCoauthors(message string) []string {
+	if message == "" {
+		return nil
+	}
+	var names []string
+	seen := map[string]bool{}
+	for _, m := range coauthorRE.FindAllStringSubmatch(message, -1) {
+		name := strings.TrimSpace(trailingEmailRE.ReplaceAllString(m[1], ""))
+		if name != "" && !seen[name] {
+			seen[name] = true
+			names = append(names, name)
+		}
+	}
+	return names
+}
