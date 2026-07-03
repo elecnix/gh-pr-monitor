@@ -12,7 +12,7 @@ features:
 
 # gh-pr-monitor
 
-A GitHub CLI extension that provides complete inline PR review comment access from the terminal with LLM-friendly JSON output.
+A GitHub CLI extension built to be driven by coding agents (Claude Code, pi, etc.) — provides inline PR review comments, thread management, live streaming PR monitoring, and structured JSON output from the terminal.
 
 ## When to Use
 
@@ -121,6 +121,12 @@ Mark threads as resolved:
 gh pr-monitor threads resolve -R owner/repo <pr-number> --thread-id <thread_id>
 ```
 
+Reopen a previously resolved thread:
+
+```sh
+gh pr-monitor threads unresolve -R owner/repo <pr-number> --thread-id <thread_id>
+```
+
 ### 6. Add Reactions to Comments
 
 Add reactions to any GitHub node (comments, reviews, etc.):
@@ -216,6 +222,10 @@ Monitor({
 ```
 
 The watch auto-stops when the PR is merged or closed.
+
+**Adaptive backoff:** After 3 consecutive no-change polls, the polling interval grows exponentially (capped at 5 minutes) and resets to the base interval on any change. This keeps an idle PR cheap to watch. Transient GitHub API errors are logged to stderr and retried with a separate doubling backoff — the loop does not crash.
+
+**`retriggerComments` preference:** Set `retriggerComments: true` in `${XDG_CONFIG_HOME:-~/.config}/gh-pr-monitor/preferences.json` to re-emit every open unresolved thread and general comment on _each_ poll (instead of only genuinely-new ones). This is chatty and effectively disables the idle backoff, so pair it with a longer `--interval`. Check/CI/review/commit/state events still de-duplicate normally.
 
 ### 9. Wait for PR Attention (Await)
 
@@ -461,6 +471,6 @@ For continuous monitoring under Claude Code, wrap this command in the persistent
 
 ## Documentation Links
 
-- [docs/SCHEMAS.md](docs/SCHEMAS.md) — JSON schemas
-- [skills/references/USAGE.md](skills/references/USAGE.md) — Detailed usage examples
+- [docs/SCHEMAS.md](../../docs/SCHEMAS.md) — JSON schemas
+- [skills/references/USAGE.md](../references/USAGE.md) — Detailed usage examples
 - This is a fork of [agynio/gh-pr-review](https://github.com/agynio/gh-pr-review).
