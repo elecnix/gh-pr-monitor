@@ -1,6 +1,6 @@
 package main
 
-import "github.com/agynio/gh-pr-review/cmd"
+import "github.com/elecnix/gh-pr-monitor/cmd"
 
 func main() {
 	cmd.ExecuteOrExit()

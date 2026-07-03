@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agynio/gh-pr-review/internal/ghcli"
-	"github.com/agynio/gh-pr-review/internal/resolver"
+	"github.com/elecnix/gh-pr-monitor/internal/ghcli"
+	"github.com/elecnix/gh-pr-monitor/internal/resolver"
 )
 
 // Service exposes pull request review thread operations.
@@ -429,12 +429,12 @@ type ThreadComment struct {
 
 // ThreadWithComments represents a review thread with all comments.
 type ThreadWithComments struct {
-	ThreadID    string          `json:"thread_id"`
-	IsResolved  bool            `json:"is_resolved"`
-	Path        string          `json:"path"`
-	Line        *int            `json:"line,omitempty"`
-	IsOutdated  bool            `json:"is_outdated"`
-	Comments    []ThreadComment `json:"comments"`
+	ThreadID   string          `json:"thread_id"`
+	IsResolved bool            `json:"is_resolved"`
+	Path       string          `json:"path"`
+	Line       *int            `json:"line,omitempty"`
+	IsOutdated bool            `json:"is_outdated"`
+	Comments   []ThreadComment `json:"comments"`
 }
 
 // GetThreadsByID fetches one or more threads (with all comments) by thread ID.
@@ -486,9 +486,11 @@ func (s *Service) fetchThreadWithComments(threadID string) (*ThreadWithComments,
 			Line       *int   `json:"line"`
 			Comments   struct {
 				Nodes []struct {
-					ID        string    `json:"id"`
-					Body      string    `json:"body"`
-					Author    *struct { Login string `json:"login"` } `json:"author"`
+					ID     string `json:"id"`
+					Body   string `json:"body"`
+					Author *struct {
+						Login string `json:"login"`
+					} `json:"author"`
 					CreatedAt time.Time `json:"createdAt"`
 					UpdatedAt time.Time `json:"updatedAt"`
 				} `json:"nodes"`

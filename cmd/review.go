@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/agynio/gh-pr-review/internal/resolver"
-	reviewsvc "github.com/agynio/gh-pr-review/internal/review"
+	"github.com/elecnix/gh-pr-monitor/internal/resolver"
+	reviewsvc "github.com/elecnix/gh-pr-monitor/internal/review"
 )
 
 func newReviewCommand() *cobra.Command {
@@ -59,11 +59,11 @@ type reviewOptions struct {
 	Pull     int
 	Selector string
 
-	Start       bool
-	AddComment  bool
-	EditComment bool
+	Start         bool
+	AddComment    bool
+	EditComment   bool
 	DeleteComment bool
-	Submit      bool
+	Submit        bool
 
 	Commit    string
 	ReviewID  string

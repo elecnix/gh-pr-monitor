@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/agynio/gh-pr-review/internal/await"
-	"github.com/agynio/gh-pr-review/internal/resolver"
+	"github.com/elecnix/gh-pr-monitor/internal/await"
+	"github.com/elecnix/gh-pr-monitor/internal/resolver"
 )
 
 func newAwaitCommand() *cobra.Command {
@@ -46,13 +46,13 @@ Exit codes:
 }
 
 type awaitOptions struct {
-	Repo     string
-	Pull     int
-	Selector string
-	Mode     string
-	Timeout  int
-	Interval int
-	Debounce int
+	Repo      string
+	Pull      int
+	Selector  string
+	Mode      string
+	Timeout   int
+	Interval  int
+	Debounce  int
 	CheckOnly bool
 }
 

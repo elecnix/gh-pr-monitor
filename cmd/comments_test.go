@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agynio/gh-pr-review/internal/ghcli"
+	"github.com/elecnix/gh-pr-monitor/internal/ghcli"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -15,7 +15,7 @@ func Execute() error {
 
 func newRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:           "gh-pr-review",
+		Use:           "gh-pr-monitor",
 		Short:         "PR review helper commands for gh",
 		SilenceUsage:  true,
 		SilenceErrors: true,
