@@ -1,6 +1,13 @@
 ---
 name: gh-pr-monitor
-description: View and manage inline GitHub PR review comments with full thread context from the terminal
+description: View and manage inline GitHub PR review comments with full thread context from the terminal. Also monitor PRs for new comments, CI failures, conflicts, and other events.
+features:
+  - View and reply to inline PR review comments
+  - Resolve and manage review threads
+  - Monitor PRs continuously with streaming NDJSON events
+  - Poll PRs until they need attention (await)
+  - Manage draft PR status
+  - Add reactions to comments
 ---
 
 # gh-pr-monitor
@@ -23,6 +30,8 @@ Use this skill when you need to:
 - View full conversation history for specific threads
 - Manage pull request draft status (mark as draft/ready for review)
 - List all draft pull requests in a repository
+- Monitor a PR continuously for new events (comments, CI, conflicts)
+- Wait for a PR to need attention before proceeding
 
 This tool is particularly useful for:
 
@@ -112,7 +121,7 @@ Mark threads as resolved:
 gh pr-monitor threads resolve -R owner/repo <pr-number> --thread-id <thread_id>
 ```
 
-### 6. Add Reactions
+### 6. Add Reactions to Comments
 
 Add reactions to any GitHub node (comments, reviews, etc.):
 
@@ -154,7 +163,90 @@ gh pr-monitor draft list -R owner/repo
 - `draft mark/ready`: `{"pr_number": 1, "is_draft": true, "status": "marked as draft"}`
 - `draft list`: `[{"pr_number": 1, "is_draft": true, "title": "Draft PR"}]`
 
-### 8. Create and Submit Reviews
+### 8. Monitor a Pull Request
+
+Continuously monitor a PR for new events (comments, CI failures, conflicts, etc.):
+
+```sh
+# Stream events as NDJSON (one per line)
+gh pr-monitor monitor -R owner/repo <pr-number>
+
+# Human-readable messages instead of JSON
+gh pr-monitor monitor --text -R owner/repo <pr-number>
+
+# One-shot: current actionable state, then exit
+gh pr-monitor monitor --once -R owner/repo <pr-number>
+```
+
+**Monitor flags:**
+
+- `--interval <seconds>` — Base polling interval (default: 60, min 10)
+- `--timeout <seconds>` — Maximum watch time (default: 0 = until merged/closed)
+- `--ignored-bots <a,b>` — Author logins whose general comments are ignored
+- `--once` — Fetch once, emit current state, and exit
+- `--text` — Emit rendered message instead of NDJSON
+
+**Event types emitted:**
+
+| Type | Description |
+|------|-------------|
+| `first-poll` | Initial state after first poll |
+| `new-unresolved-threads` | New review comment threads |
+| `new-general-comments` | New general PR comments |
+| `new-failing-checks` | Newly failing CI checks |
+| `ci-all-green` | All CI checks passing |
+| `conflict` | Merge conflicts detected |
+| `review-approved` | PR approved |
+| `review-changes-requested` | Changes requested |
+| `review-dismissed` | Review dismissed |
+| `new-commit` | New commits pushed |
+| `merged` | PR merged |
+| `closed` | PR closed |
+
+**Use with Claude Code:**
+
+The `monitor` command is designed to be wrapped by Claude Code's persistent `Monitor` tool. Each NDJSON line becomes a session notification, so the agent reacts to events as they happen:
+
+```
+Monitor({
+  command: "gh pr-monitor monitor -R owner/repo 42",
+  persistent: true,
+  description: "PR owner/repo#42 events",
+})
+```
+
+The watch auto-stops when the PR is merged or closed.
+
+### 9. Wait for PR Attention (Await)
+
+Poll a PR until it needs attention (comments, conflicts, or CI failures):
+
+```sh
+# Check once and exit
+gh pr-monitor await --check-only -R owner/repo <pr-number>
+
+# Poll until work detected (default: 1 day timeout, 5 min interval)
+gh pr-monitor await -R owner/repo <pr-number>
+
+# Poll for comments only with custom timeout
+gh pr-monitor await --mode comments --timeout 3600 -R owner/repo <pr-number>
+```
+
+**Exit codes:**
+
+- `0` — Work detected (PR needs attention)
+- `1` — Error occurred
+- `2` — Timed out with no work detected
+
+**Await flags:**
+
+- `--mode <all|comments|conflicts|actions>` — Watch mode (default: all)
+- `--timeout <seconds>` — Maximum polling time (default: 86400 = 1 day)
+- `--interval <seconds>` — Polling interval (default: 300 = 5 minutes)
+- `--debounce <seconds>` — Debounce duration (default: 30)
+- `--check-only` — Check once and exit without polling
+
+### 10. Create and Submit Reviews
 
 Start a pending review:
 
@@ -356,24 +448,14 @@ For continuous monitoring under Claude Code, wrap this command in the persistent
 4. Delete comments (if needed): `gh pr-monitor review --delete-comment -R owner/repo <pr> --comment-id <comment_id>`
 5. Submit: `gh pr-monitor review --submit -R owner/repo <pr> --review-id <review_id> --event REQUEST_CHANGES --body "Summary"`
 
-### 6. Add Reactions to Comments
-
-Add reactions to any GitHub node (comments, reviews, etc.):
-
-```sh
-gh pr-monitor react <comment_id> --type thumbs_up
-```
-
-**Valid reaction types:** `thumbs_up`, `thumbs_down`, `laugh`, `hooray`, `confused`, `heart`, `rocket`, `eyes`
-
 ## Important Notes
 
-- All IDs use GraphQL format (PRR*... for reviews, PRRT*... for threads, PRRC\_... for comments)
+- All IDs use GraphQL format (PRR*... for reviews, PRRT*... for threads, PRRC_* for comments)
 - Commands use pure GraphQL (no REST API fallbacks)
 - Empty arrays `[]` are returned when no data matches filters
 - Thread replies are sorted by created_at ascending
 - Comments can only be edited/deleted while the review is in pending state
-- Numeric review IDs are rejected; use GraphQL node IDs (PRR\_...)
+- Numeric review IDs are rejected; use GraphQL node IDs (PRR_...)
 - The `--body-file` flag supports "-" for stdin input
 - The `--review-id` flag in `comments reply` is for replying inside your pending review
 
