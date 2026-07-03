@@ -1,40 +1,17 @@
 ---
 name: gh-pr-monitor
-description: View and manage inline GitHub PR review comments with full thread context from the terminal
+description: View, reply, and resolve inline GitHub PR review comments from the terminal. Monitor PRs for new comments, CI failures, conflicts, and other events — built for coding agents.
 ---
 
 # gh-pr-monitor
 
-A GitHub CLI extension that provides complete inline PR review comment access from the terminal with LLM-friendly JSON output.
+A GitHub CLI extension built for coding agents (Claude Code, pi, etc.) — inline PR review comments, thread management, live monitoring with streaming NDJSON events, and structured JSON output.
 
 ## When to Use
 
-Use this skill when you need to:
-
-- View inline review comments and threads on a pull request
-- Reply to review comments programmatically
-- Resolve or unresolve review threads
-- Create and submit PR reviews with inline comments
-- Edit or delete comments in pending reviews
-- Access PR review context for automated workflows
-- Filter reviews by state, reviewer, or resolution status
-- Poll PRs for updates (comments, conflicts, CI failures)
-- Add reactions to comments or reviews
-- View full conversation history for specific threads
-- Manage pull request draft status (mark as draft/ready for review)
-- List all draft pull requests in a repository
-
-This tool is particularly useful for:
-
-- Automated PR review workflows
-- LLM-based code review agents
-- Terminal-based PR review processes
-- Getting structured review data without multiple API calls
-- CI/CD pipelines that need to wait for PR attention
+Use when you need to interact with a PR: view/reply/resolve review threads, create reviews with inline comments, manage draft status, add reactions, poll for attention (`await`), or continuously monitor for events (`monitor`).
 
 ## Installation
-
-First, ensure the extension is installed:
 
 ```sh
 gh extension install elecnix/gh-pr-monitor
@@ -42,343 +19,149 @@ gh extension install elecnix/gh-pr-monitor
 
 ## Core Commands
 
-### 1. View All Reviews and Threads
+All commands accept `-R owner/repo`. IDs use GraphQL format (`PRR_*`, `PRRT_*`, `PRRC_*`). Use `--body-file -` for stdin input.
 
-Get complete review context with inline comments and thread replies:
+### View Reviews & Threads
 
 ```sh
 gh pr-monitor review view -R owner/repo --pr <number>
 ```
 
-**Useful filters:**
+Key filters: `--unresolved`, `--not_outdated`, `--tail 1`, `--reviewer <login>`, `--include-comment-node-id`.
 
-- `--unresolved` - Only show unresolved threads
-- `--reviewer <login>` - Filter by specific reviewer
-- `--states <APPROVED|CHANGES_REQUESTED|COMMENTED|DISMISSED|PENDING>` - Filter by review state
-- `--tail <n>` - Keep only last n replies per thread
-- `--not_outdated` - Exclude outdated threads
-- `--author <login>` - Filter threads to those containing a comment by this author
-- `--include-resolved` - Include resolved threads (overrides --unresolved)
-- `--include-comment-node-id` - Add comment node identifiers to parent comments and replies
-
-**Output:** Structured JSON with reviews, comments, thread_ids, and resolution status.
-
-### 2. Reply to Review Threads
-
-Reply to an existing inline comment thread:
+### Reply to Threads
 
 ```sh
-gh pr-monitor comments reply <pr-number> -R owner/repo \
-  --thread-id <thread_id> \
-  --body "Your reply message"
+gh pr-monitor comments reply <pr-number> -R owner/repo --thread-id <id> --body "..."
 ```
 
-Alternatively, read the reply from a file (use `"-"` for stdin):
+### List / View / Resolve Threads
 
 ```sh
-gh pr-monitor comments reply <pr-number> -R owner/repo \
-  --thread-id <thread_id> \
-  --body-file reply.md
+gh pr-monitor threads list -R owner/repo <pr> --unresolved --mine
+gh pr-monitor threads view <thread_id> [<thread_id> ...]
+gh pr-monitor threads resolve -R owner/repo <pr> --thread-id <id>
+gh pr-monitor threads unresolve -R owner/repo <pr> --thread-id <id>
 ```
 
-### 3. List Review Threads
-
-Get a filtered list of review threads:
-
-```sh
-gh pr-monitor threads list -R owner/repo <pr-number> --unresolved --mine
-```
-
-**Filters:**
-
-- `--unresolved` - Only show unresolved threads
-- `--mine` - Show only threads involving or resolvable by the viewer
-
-### 4. View Specific Threads
-
-View full conversation for one or more threads by ID:
-
-```sh
-gh pr-monitor threads view <thread_id> <thread_id>
-```
-
-This returns the complete comment history for the specified threads.
-
-### 5. Resolve/Unresolve Threads
-
-Mark threads as resolved:
-
-```sh
-gh pr-monitor threads resolve -R owner/repo <pr-number> --thread-id <thread_id>
-```
-
-### 6. Add Reactions
-
-Add reactions to any GitHub node (comments, reviews, etc.):
+### Reactions
 
 ```sh
 gh pr-monitor react <comment_id> --type thumbs_up
 ```
 
-**Valid reaction types:** `thumbs_up`, `thumbs_down`, `laugh`, `hooray`, `confused`, `heart`, `rocket`, `eyes`
+Valid types: `thumbs_up`, `thumbs_down`, `laugh`, `hooray`, `confused`, `heart`, `rocket`, `eyes`.
 
-### 7. Manage Draft Status
-
-Check if a pull request is a draft:
+### Draft Status
 
 ```sh
-gh pr-monitor draft status -R owner/repo <pr-number>
-```
-
-Mark a pull request as draft:
-
-```sh
-gh pr-monitor draft mark -R owner/repo <pr-number>
-```
-
-Mark a pull request as ready for review:
-
-```sh
-gh pr-monitor draft ready -R owner/repo <pr-number>
-```
-
-List all draft pull requests in the repository:
-
-```sh
+gh pr-monitor draft status -R owner/repo <pr>
+gh pr-monitor draft mark -R owner/repo <pr>
+gh pr-monitor draft ready -R owner/repo <pr>
 gh pr-monitor draft list -R owner/repo
 ```
 
-**Output formats:**
+### Create & Submit Reviews
 
-- `draft status`: `{"pr_number": 1, "is_draft": false, "title": "PR Title"}`
-- `draft mark/ready`: `{"pr_number": 1, "is_draft": true, "status": "marked as draft"}`
-- `draft list`: `[{"pr_number": 1, "is_draft": true, "title": "Draft PR"}]`
-
-### 8. Create and Submit Reviews
-
-Start a pending review:
+Start a pending review, add inline comments, then submit:
 
 ```sh
-gh pr-monitor review --start -R owner/repo <pr-number>
+gh pr-monitor review --start -R owner/repo <pr>
+gh pr-monitor review --add-comment -R owner/repo <pr> --review-id <id> --path <file> --line <n> --body "..."
+gh pr-monitor review --submit -R owner/repo <pr> --review-id <id> --event <APPROVE|REQUEST_CHANGES|COMMENT> --body "..."
 ```
 
-Add inline comments to pending review:
+Edit or delete pending comments: `--edit-comment` / `--delete-comment` with `--comment-id`. Pin start to a commit with `--commit <sha>`.
+
+### Monitor a PR
+
+Continuously stream one NDJSON event per genuinely-new change until merge/close:
 
 ```sh
-gh pr-monitor review --add-comment \
-  --review-id <review_id> \
-  --path <file-path> \
-  --line <line-number> \
-  --body "Your comment" \
-  -R owner/repo <pr-number>
+gh pr-monitor monitor -R owner/repo <pr>        # NDJSON stream
+gh pr-monitor monitor --text -R owner/repo <pr> # Human-readable
+gh pr-monitor monitor --once -R owner/repo <pr> # One-shot, then exit
 ```
 
-Or read the comment body from a file (use `"-"` for stdin):
+Flags: `--interval` (default 60s, min 10), `--timeout` (default 0 = forever), `--ignored-bots <a,b>`.
+
+**Event types:**
+
+| Type | Description |
+|------|-------------|
+| `new-unresolved-threads` | New review threads |
+| `new-general-comments` | New general PR comments |
+| `new-failing-checks` | Newly failing CI |
+| `ci-all-green` | All CI passing |
+| `conflict` | Merge conflicts |
+| `review-approved` | PR approved |
+| `review-changes-requested` | Changes requested |
+| `review-dismissed` | Review dismissed |
+| `new-commit` | New commit pushed |
+| `merged` | PR merged |
+| `closed` | PR closed |
+
+**Claude Code integration:** Wrap in a persistent `Monitor` tool — each NDJSON line becomes a session notification:
+
+```
+Monitor({ command: "gh pr-monitor monitor -R owner/repo 42", persistent: true })
+```
+
+**Adaptive backoff:** After 3 no-change polls, interval grows exponentially (cap 5min), resets on any change. Transient errors retry with doubling backoff — the loop doesn't crash.
+
+### Await (poll until attention needed)
 
 ```sh
-gh pr-monitor review --add-comment \
-  --review-id <review_id> \
-  --path <file-path> \
-  --line <line-number> \
-  --body-file comment.md \
-  -R owner/repo <pr-number>
-```
-
-**Edit a comment in pending review** (requires comment node ID):
-
-```sh
-gh pr-monitor review --edit-comment \
-  --comment-id <comment_id> \
-  --body "Updated comment text" \
-  -R owner/repo <pr-number>
-```
-
-**Delete a comment from pending review** (requires comment node ID):
-
-```sh
-gh pr-monitor review --delete-comment \
-  --comment-id <comment_id> \
-  -R owner/repo <pr-number>
-```
-
-**Additional flags for add-comment:**
-
-- `--side <LEFT|RIGHT>` - Diff side for inline comment (default: RIGHT)
-- `--start-line <n>` - Start line for multi-line comments
-- `--start-side <LEFT|RIGHT>` - Start side for multi-line comments
-
-**Additional flags for review start:**
-
-- `--commit <sha>` - Pin the pending review to a specific commit (defaults to current head)
-
-Submit the review:
-
-```sh
-gh pr-monitor review --submit \
-  --review-id <review_id> \
-  --event <APPROVE|REQUEST_CHANGES|COMMENT> \
-  --body "Overall review summary" \
-  -R owner/repo <pr-number>
-```
-
-## Output Format
-
-All commands return structured JSON optimized for programmatic use:
-
-- Consistent field names
-- Stable ordering
-- Omitted fields instead of null values
-- Essential data only (no URLs or metadata noise)
-- Pre-joined thread replies
-
-Example output structure:
-
-```json
-{
-  "reviews": [
-    {
-      "id": "PRR_...",
-      "state": "CHANGES_REQUESTED",
-      "author_login": "reviewer",
-      "comments": [
-        {
-          "thread_id": "PRRT_...",
-          "path": "src/file.go",
-          "author_login": "reviewer",
-          "body": "Consider refactoring this",
-          "created_at": "2024-01-15T10:30:00Z",
-          "is_resolved": false,
-          "is_outdated": false,
-          "thread_comments": [
-            {
-              "author_login": "author",
-              "body": "Good point, will fix",
-              "created_at": "2024-01-15T11:00:00Z"
-            }
-          ]
-        }
-      ]
-    }
-  ]
-}
-```
-
-## Best Practices
-
-1. **Always use `-R owner/repo`** to specify the repository explicitly
-2. **Use `--unresolved` and `--not_outdated`** to focus on actionable comments
-3. **Save thread_id values** from `review view` output for replying
-4. **Filter by reviewer** when dealing with specific review feedback
-5. **Use `--tail 1`** to reduce output size by keeping only latest replies
-6. **Parse JSON output** instead of trying to scrape text
-
-## Common Workflows
-
-### Get Unresolved Comments for Current PR
-
-```sh
-gh pr-monitor review view --unresolved --not_outdated -R owner/repo --pr $(gh pr view --json number -q .number)
-```
-
-### Claim a Thread Before Working on It
-
-**IMPORTANT**: Before addressing any thread, add an 👀 reaction to the FIRST comment in the thread to claim it. This prevents multiple agents from working on the same thread simultaneously.
-
-```sh
-# Add 👀 reaction to claim the thread
-gh pr-monitor react <comment_node_id> --type eyes
-```
-
-Then address the thread, reply, and resolve. If you cannot address the thread (e.g., it needs human input), reply and leave it unresolved.
-
-**Note:** Adding a reaction (👍, 👀, etc.) does NOT resolve a thread. To resolve, use `gh pr-monitor threads resolve`.
-
-### Reply to All Unresolved Comments
-
-1. Get unresolved threads: `gh pr-monitor threads list --unresolved -R owner/repo <pr>`
-2. For each thread_id, reply: `gh pr-monitor comments reply <pr> -R owner/repo --thread-id <id> --body "..."`
-3. Resolve the thread: `gh pr-monitor threads resolve <pr> -R owner/repo --thread-id <id>`
-   (If the thread is non-actionable, resolve it with a brief reply explaining why it's being dismissed.)
-
-### Wait for PR Attention
-
-Poll a PR until it needs attention (comments, conflicts, or CI failures):
-
-```sh
-# Check once and exit
-gh pr-monitor await --check-only -R owner/repo <pr>
-
-# Poll until work detected (default: 1 day timeout, 5 minute interval)
-gh pr-monitor await -R owner/repo <pr>
-
-# Poll for comments only with custom timeout
+gh pr-monitor await --check-only -R owner/repo <pr>   # One-shot
+gh pr-monitor await -R owner/repo <pr>                # Poll until work (default: 1d timeout, 5min interval)
 gh pr-monitor await --mode comments --timeout 3600 -R owner/repo <pr>
 ```
 
-**Exit codes:**
+Exit codes: `0` = work detected, `1` = error, `2` = timed out / no work.  
+Flags: `--mode <all|comments|conflicts|actions>`, `--timeout`, `--interval`, `--debounce`, `--check-only`.
 
-- `0` - Work detected (PR needs attention)
-- `1` - Error occurred
-- `2` - Timed out with no work detected
+## Critical Workflows
 
-**Await flags:**
+### Claim a Thread Before Working on It
 
-- `--mode <all|comments|conflicts|actions>` - Watch mode (default: all)
-- `--timeout <seconds>` - Maximum polling time (default: 86400 = 1 day)
-- `--interval <seconds>` - Polling interval (default: 300 = 5 minutes)
-- `--debounce <seconds>` - Debounce duration (default: 30)
-- `--check-only` - Check once and exit without polling
-
-### Continuously Monitor a PR (streaming)
-
-Unlike `await` (which returns once), `monitor` runs continuously and emits one NDJSON event per genuinely-new change until the PR is merged or closed:
+Add an 👀 reaction to the **first** comment in a thread to signal you're working on it — prevents duplicate effort from other agents:
 
 ```sh
-# Stream events (NDJSON, one per line)
-gh pr-monitor monitor -R owner/repo <pr>
-
-# Human-readable messages instead of JSON
-gh pr-monitor monitor --text -R owner/repo <pr>
-
-# One-shot: current actionable state, then exit
-gh pr-monitor monitor --once -R owner/repo <pr>
+gh pr-monitor react <comment_node_id> --type eyes
 ```
 
-**Monitor flags:** `--interval` (default 60, min 10), `--timeout` (default 0 = until merged/closed), `--ignored-bots <a,b>`, `--once`, `--text`. Notification wording is templated and overridable via `${XDG_CONFIG_HOME:-~/.config}/gh-pr-monitor/preferences.json`.
+A reaction does NOT resolve a thread. After addressing, reply then resolve with `threads resolve`.
 
-For continuous monitoring under Claude Code, wrap this command in the persistent `Monitor` tool — each NDJSON line becomes a session notification, and the watch auto-stops on merge/close. See [docs/CLAUDE_CODE.md](../../docs/CLAUDE_CODE.md).
+### Reply to All Unresolved Comments
+
+1. List: `gh pr-monitor threads list --unresolved -R owner/repo <pr>`
+2. Reply: `gh pr-monitor comments reply <pr> -R owner/repo --thread-id <id> --body "..."`
+3. Resolve: `gh pr-monitor threads resolve <pr> -R owner/repo --thread-id <id>`
+
+If non-actionable, resolve with a brief reply explaining why.
 
 ### Create Review with Inline Comments
 
-1. Start: `gh pr-monitor review --start -R owner/repo <pr>`
-2. Add comments: `gh pr-monitor review --add-comment -R owner/repo <pr> --review-id <review_id> --path <file> --line <num> --body "..."` (or use `--body-file <path>`)
-3. Edit comments (if needed): `gh pr-monitor review --edit-comment -R owner/repo <pr> --comment-id <comment_id> --body "Updated text"`
-4. Delete comments (if needed): `gh pr-monitor review --delete-comment -R owner/repo <pr> --comment-id <comment_id>`
-5. Submit: `gh pr-monitor review --submit -R owner/repo <pr> --review-id <review_id> --event REQUEST_CHANGES --body "Summary"`
+1. `gh pr-monitor review --start -R owner/repo <pr>`
+2. `gh pr-monitor review --add-comment ...`
+3. `gh pr-monitor review --submit -R owner/repo <pr> --review-id <id> --event REQUEST_CHANGES --body "Summary"`
 
-### 6. Add Reactions to Comments
-
-Add reactions to any GitHub node (comments, reviews, etc.):
+### Get Actionable Unresolved Comments
 
 ```sh
-gh pr-monitor react <comment_id> --type thumbs_up
+gh pr-monitor review view --unresolved --not_outdated --tail 1 -R owner/repo --pr $(gh pr view --json number -q .number)
 ```
 
-**Valid reaction types:** `thumbs_up`, `thumbs_down`, `laugh`, `hooray`, `confused`, `heart`, `rocket`, `eyes`
+## Key Notes
 
-## Important Notes
+- Comments can only be edited/deleted while the review is pending (before submit).
+- Numeric review IDs are rejected — always use GraphQL node IDs (`PRR_*`).
+- Monitor notification templates are overridable via `${XDG_CONFIG_HOME:-~/.config}/gh-pr-monitor/preferences.json`.
+- All commands return structured JSON with consistent field names, no nulls, pre-joined thread replies.
 
-- All IDs use GraphQL format (PRR*... for reviews, PRRT*... for threads, PRRC\_... for comments)
-- Commands use pure GraphQL (no REST API fallbacks)
-- Empty arrays `[]` are returned when no data matches filters
-- Thread replies are sorted by created_at ascending
-- Comments can only be edited/deleted while the review is in pending state
-- Numeric review IDs are rejected; use GraphQL node IDs (PRR\_...)
-- The `--body-file` flag supports "-" for stdin input
-- The `--review-id` flag in `comments reply` is for replying inside your pending review
+## References
 
-## Documentation Links
-
-- [docs/SCHEMAS.md](docs/SCHEMAS.md) — JSON schemas
-- [skills/references/USAGE.md](skills/references/USAGE.md) — Detailed usage examples
-- This is a fork of [agynio/gh-pr-review](https://github.com/agynio/gh-pr-review).
+- [docs/SCHEMAS.md](../../docs/SCHEMAS.md) — JSON schemas
+- [skills/references/USAGE.md](../references/USAGE.md) — Detailed usage
+- [docs/CLAUDE_CODE.md](../../docs/CLAUDE_CODE.md) — Claude Code integration guide
+- Fork of [agynio/gh-pr-review](https://github.com/agynio/gh-pr-review).
