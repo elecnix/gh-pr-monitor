@@ -346,6 +346,8 @@ gh pr-monitor monitor --once -R owner/repo <pr>
 
 **Monitor flags:** `--interval` (default 60, min 10), `--timeout` (default 0 = until merged/closed), `--ignored-bots <a,b>`, `--once`, `--text`. Notification wording is templated and overridable via `${XDG_CONFIG_HOME:-~/.config}/gh-pr-monitor/preferences.json`.
 
+For continuous monitoring under Claude Code, wrap this command in the persistent `Monitor` tool — each NDJSON line becomes a session notification, and the watch auto-stops on merge/close. See [docs/CLAUDE_CODE.md](../../docs/CLAUDE_CODE.md).
+
 ### Create Review with Inline Comments
 
 1. Start: `gh pr-monitor review --start -R owner/repo <pr>`

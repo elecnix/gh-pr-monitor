@@ -398,3 +398,74 @@ Returned by `await`.
   "additionalProperties": false
 }
 ```
+
+## MonitorNotification
+
+Emitted by `monitor` as one NDJSON object per line (one event per genuinely-new change). Fields other than the core four are present only when relevant to the event `type`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MonitorNotification",
+  "type": "object",
+  "required": ["type", "pr_label", "message", "timestamp"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "first-poll",
+        "new-failing-checks",
+        "ci-all-green",
+        "new-unresolved-threads",
+        "new-general-comments",
+        "conflict",
+        "review-approved",
+        "review-changes-requested",
+        "review-dismissed",
+        "new-commit",
+        "merged",
+        "closed"
+      ],
+      "description": "The kind of event"
+    },
+    "pr_label": {
+      "type": "string",
+      "description": "owner/repo#number"
+    },
+    "message": {
+      "type": "string",
+      "description": "Rendered notification text (from the templates in preferences.json)"
+    },
+    "unresolved_threads": {
+      "type": "integer",
+      "description": "Count of currently-unresolved review threads (omitted when 0)"
+    },
+    "general_comments": {
+      "type": "integer",
+      "description": "Count of currently-actionable general comments (omitted when 0)"
+    },
+    "failing_checks": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Newly-failing check names (new-failing-checks)"
+    },
+    "commit_short_oid": {
+      "type": "string",
+      "description": "Short SHA of the new head commit (new-commit)"
+    },
+    "commit_author": {
+      "type": "string",
+      "description": "Author of the new head commit (new-commit)"
+    },
+    "review_author": {
+      "type": "string",
+      "description": "Author of the review decision (review-* events)"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was emitted"
+    }
+  }
+}
+```

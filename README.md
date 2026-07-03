@@ -220,6 +220,20 @@ gh pr-monitor monitor --once -R owner/repo 42
 
 Notification wording is templated and user-overridable via `${XDG_CONFIG_HOME:-~/.config}/gh-pr-monitor/preferences.json`.
 
+#### Use with Claude Code
+
+`monitor` is designed to be wrapped by [Claude Code](https://claude.com/claude-code)'s persistent `Monitor` tool: each NDJSON line becomes a session notification, so the agent reacts to review comments, CI failures, conflicts, and new commits as they happen. The command handles polling and change-detection; the harness handles delivery and turn-batching.
+
+```
+Monitor({
+  command: "gh pr-monitor monitor -R owner/repo 42",
+  persistent: true,
+  description: "PR owner/repo#42 events",
+})
+```
+
+The watch auto-stops when the PR is merged or closed. See [docs/CLAUDE_CODE.md](docs/CLAUDE_CODE.md) for the full guide, event→reaction mapping, and template customization.
+
 ### Additional Flags
 
 **Review start:**
