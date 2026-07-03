@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/agynio/gh-pr-review/internal/reactions"
-	"github.com/agynio/gh-pr-review/internal/resolver"
+	"github.com/elecnix/gh-pr-monitor/internal/reactions"
+	"github.com/elecnix/gh-pr-monitor/internal/resolver"
 )
 
 func newReactCommand() *cobra.Command {

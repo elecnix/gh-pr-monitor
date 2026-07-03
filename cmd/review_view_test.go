@@ -9,7 +9,7 @@ import (
 
 	_ "embed"
 
-	"github.com/agynio/gh-pr-review/internal/ghcli"
+	"github.com/elecnix/gh-pr-monitor/internal/ghcli"
 )
 
 //go:embed testdata/report_response.json
@@ -166,11 +166,11 @@ func (f *fakeViewAPI) GraphQL(query string, variables map[string]interface{}, re
 }
 
 func TestReviewViewCommand_ReturnsPendingStatus(t *testing.T) {
-		originalFactory := apiClientFactory
-		defer func() { apiClientFactory = originalFactory }()
+	originalFactory := apiClientFactory
+	defer func() { apiClientFactory = originalFactory }()
 
-		// Custom payload with a review in PENDING state
-		pendingPayload := []byte(`{
+	// Custom payload with a review in PENDING state
+	pendingPayload := []byte(`{
 			"repository": {
 				"pullRequest": {
 					"reviews": {
@@ -189,42 +189,42 @@ func TestReviewViewCommand_ReturnsPendingStatus(t *testing.T) {
 				}
 			}
 		}`)
-		fake := &fakeViewAPI{payload: pendingPayload, t: t}
-		apiClientFactory = func(host string) ghcli.API { return fake }
+	fake := &fakeViewAPI{payload: pendingPayload, t: t}
+	apiClientFactory = func(host string) ghcli.API { return fake }
 
-		root := newRootCommand()
-		buf := &bytes.Buffer{}
-		root.SetOut(buf)
-		root.SetErr(io.Discard)
-		root.SetArgs([]string{"review", "view", "--repo", "agyn/repo", "51"})
+	root := newRootCommand()
+	buf := &bytes.Buffer{}
+	root.SetOut(buf)
+	root.SetErr(io.Discard)
+	root.SetArgs([]string{"review", "view", "--repo", "agyn/repo", "51"})
 
-		if err := root.Execute(); err != nil {
-				t.Fatalf("execute command: %v", err)
-		}
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute command: %v", err)
+	}
 
-		var payload struct {
-				Reviews []struct {
-						ID    string  `json:"id"`
-						State string  `json:"state"`
-						Body  *string `json:"body"`
-				} `json:"reviews"`
+	var payload struct {
+		Reviews []struct {
+			ID    string  `json:"id"`
+			State string  `json:"state"`
+			Body  *string `json:"body"`
+		} `json:"reviews"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &payload); err != nil {
+		t.Fatalf("parse json: %v", err)
+	}
+	found := false
+	for _, review := range payload.Reviews {
+		if review.State == "PENDING" {
+			found = true
+			if review.ID != "R3" {
+				t.Fatalf("expected review ID R3 for pending, got %s", review.ID)
+			}
+			if review.Body == nil || *review.Body != "Pending review body" {
+				t.Fatalf("expected pending review body, got %v", review.Body)
+			}
 		}
-		if err := json.Unmarshal(buf.Bytes(), &payload); err != nil {
-				t.Fatalf("parse json: %v", err)
-		}
-		found := false
-		for _, review := range payload.Reviews {
-				if review.State == "PENDING" {
-						found = true
-						if review.ID != "R3" {
-								t.Fatalf("expected review ID R3 for pending, got %s", review.ID)
-						}
-						if review.Body == nil || *review.Body != "Pending review body" {
-								t.Fatalf("expected pending review body, got %v", review.Body)
-						}
-				}
-		}
-		if !found {
-				t.Fatalf("expected at least one review with state PENDING, got: %+v", payload.Reviews)
-		}
+	}
+	if !found {
+		t.Fatalf("expected at least one review with state PENDING, got: %+v", payload.Reviews)
+	}
 }

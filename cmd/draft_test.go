@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agynio/gh-pr-review/internal/ghcli"
+	"github.com/elecnix/gh-pr-monitor/internal/ghcli"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -38,9 +38,9 @@ func TestDraftMarkCommandOutputsJSON(t *testing.T) {
 			payload := map[string]interface{}{
 				"repository": map[string]interface{}{
 					"pullRequest": map[string]interface{}{
-						"number":   5,
-						"title":    "Test PR",
-						"isDraft":  false,
+						"number":  5,
+						"title":   "Test PR",
+						"isDraft": false,
 					},
 				},
 			}
@@ -62,8 +62,8 @@ func TestDraftMarkCommandOutputsJSON(t *testing.T) {
 			payload := map[string]interface{}{
 				"convertPullRequestToDraft": map[string]interface{}{
 					"pullRequest": map[string]interface{}{
-						"number":   5,
-						"isDraft":  true,
+						"number":  5,
+						"isDraft": true,
 					},
 				},
 			}
@@ -75,10 +75,10 @@ func TestDraftMarkCommandOutputsJSON(t *testing.T) {
 
 	cmd := newDraftMarkCommand()
 	cmd.SetArgs([]string{"5", "-R", "octo/demo"})
-	
+
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
-	
+
 	err := cmd.Execute()
 	require.NoError(t, err)
 
@@ -117,9 +117,9 @@ func TestDraftReadyCommandOutputsJSON(t *testing.T) {
 			payload := map[string]interface{}{
 				"repository": map[string]interface{}{
 					"pullRequest": map[string]interface{}{
-						"number":   5,
-						"title":    "Test PR",
-						"isDraft":  true,
+						"number":  5,
+						"title":   "Test PR",
+						"isDraft": true,
 					},
 				},
 			}
@@ -141,8 +141,8 @@ func TestDraftReadyCommandOutputsJSON(t *testing.T) {
 			payload := map[string]interface{}{
 				"markPullRequestReadyForReview": map[string]interface{}{
 					"pullRequest": map[string]interface{}{
-						"number":   5,
-						"isDraft":  false,
+						"number":  5,
+						"isDraft": false,
 					},
 				},
 			}
@@ -154,10 +154,10 @@ func TestDraftReadyCommandOutputsJSON(t *testing.T) {
 
 	cmd := newDraftReadyCommand()
 	cmd.SetArgs([]string{"5", "-R", "octo/demo"})
-	
+
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
-	
+
 	err := cmd.Execute()
 	require.NoError(t, err)
 
@@ -197,9 +197,9 @@ func TestDraftStatusCommandOutputsJSON(t *testing.T) {
 		payload := map[string]interface{}{
 			"repository": map[string]interface{}{
 				"pullRequest": map[string]interface{}{
-					"number":   5,
-					"title":    "Test Draft PR",
-					"isDraft":  true,
+					"number":  5,
+					"title":   "Test Draft PR",
+					"isDraft": true,
 				},
 			},
 		}
@@ -209,10 +209,10 @@ func TestDraftStatusCommandOutputsJSON(t *testing.T) {
 
 	cmd := newDraftStatusCommand()
 	cmd.SetArgs([]string{"5", "-R", "octo/demo"})
-	
+
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
-	
+
 	err := cmd.Execute()
 	require.NoError(t, err)
 
@@ -254,19 +254,19 @@ func TestDraftListCommandOutputsJSON(t *testing.T) {
 				"pullRequests": map[string]interface{}{
 					"nodes": []map[string]interface{}{
 						{
-							"number":   3,
-							"title":    "Draft PR 1",
-							"isDraft":  true,
+							"number":  3,
+							"title":   "Draft PR 1",
+							"isDraft": true,
 						},
 						{
-							"number":   4,
-							"title":    "Ready PR",
-							"isDraft":  false,
+							"number":  4,
+							"title":   "Ready PR",
+							"isDraft": false,
 						},
 						{
-							"number":   5,
-							"title":    "Draft PR 2",
-							"isDraft":  true,
+							"number":  5,
+							"title":   "Draft PR 2",
+							"isDraft": true,
 						},
 					},
 				},
@@ -278,10 +278,10 @@ func TestDraftListCommandOutputsJSON(t *testing.T) {
 
 	cmd := newDraftListCommand()
 	cmd.SetArgs([]string{"-R", "octo/demo"})
-	
+
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
-	
+
 	err := cmd.Execute()
 	require.NoError(t, err)
 
@@ -291,11 +291,11 @@ func TestDraftListCommandOutputsJSON(t *testing.T) {
 
 	// Should only return draft PRs (2 out of 3)
 	require.Len(t, output, 2)
-	
+
 	assert.Equal(t, float64(3), output[0]["pr_number"])
 	assert.Equal(t, true, output[0]["is_draft"])
 	assert.Equal(t, "Draft PR 1", output[0]["title"])
-	
+
 	assert.Equal(t, float64(5), output[1]["pr_number"])
 	assert.Equal(t, true, output[1]["is_draft"])
 	assert.Equal(t, "Draft PR 2", output[1]["title"])
@@ -327,9 +327,9 @@ func TestDraftAlreadyInDesiredState(t *testing.T) {
 			payload := map[string]interface{}{
 				"repository": map[string]interface{}{
 					"pullRequest": map[string]interface{}{
-						"number":   5,
-						"title":    "Test Draft PR",
-						"isDraft":  true,
+						"number":  5,
+						"title":   "Test Draft PR",
+						"isDraft": true,
 					},
 				},
 			}
@@ -342,10 +342,10 @@ func TestDraftAlreadyInDesiredState(t *testing.T) {
 
 	cmd := newDraftMarkCommand()
 	cmd.SetArgs([]string{"5", "-R", "octo/demo"})
-	
+
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
-	
+
 	err := cmd.Execute()
 	require.NoError(t, err)
 
@@ -361,7 +361,7 @@ func TestDraftAlreadyInDesiredState(t *testing.T) {
 func TestDraftCommandRequiresPRNumber(t *testing.T) {
 	cmd := newDraftMarkCommand()
 	cmd.SetArgs([]string{"-R", "octo/demo"})
-	
+
 	err := cmd.Execute()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "pull request number is required")
@@ -394,9 +394,9 @@ func TestDraftStatusWithSelector(t *testing.T) {
 		payload := map[string]interface{}{
 			"repository": map[string]interface{}{
 				"pullRequest": map[string]interface{}{
-					"number":   5,
-					"title":    "Test PR",
-					"isDraft":  false,
+					"number":  5,
+					"title":   "Test PR",
+					"isDraft": false,
 				},
 			},
 		}
@@ -406,10 +406,10 @@ func TestDraftStatusWithSelector(t *testing.T) {
 
 	cmd := newDraftStatusCommand()
 	cmd.SetArgs([]string{"https://github.com/octo/demo/pull/5"})
-	
+
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
-	
+
 	err := cmd.Execute()
 	require.NoError(t, err)
 

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agynio/gh-pr-review/internal/ghcli"
-	"github.com/agynio/gh-pr-review/internal/resolver"
+	"github.com/elecnix/gh-pr-monitor/internal/ghcli"
+	"github.com/elecnix/gh-pr-monitor/internal/resolver"
 )
 
 // Service handles PR polling operations.
@@ -115,9 +115,9 @@ type PageInfo struct {
 }
 
 type Comment struct {
-	ID        string `json:"id"`
-	Body      string `json:"body"`
-	Author    struct {
+	ID     string `json:"id"`
+	Body   string `json:"body"`
+	Author struct {
 		Login string `json:"login"`
 	} `json:"author"`
 	CreatedAt string `json:"createdAt"`
@@ -129,12 +129,12 @@ type ThreadNodes struct {
 }
 
 type ReviewThread struct {
-	ID          string         `json:"id"`
-	IsResolved  bool           `json:"isResolved"`
-	IsOutdated  bool           `json:"isOutdated"`
-	Path        string         `json:"path"`
-	Line        *int           `json:"line"`
-	Comments    ReviewComments `json:"comments"`
+	ID         string         `json:"id"`
+	IsResolved bool           `json:"isResolved"`
+	IsOutdated bool           `json:"isOutdated"`
+	Path       string         `json:"path"`
+	Line       *int           `json:"line"`
+	Comments   ReviewComments `json:"comments"`
 }
 
 type ReviewComments struct {
@@ -454,16 +454,16 @@ func FailingAnnotations(pr *PullRequest) []CheckAnnotation {
 // receive consistent, parseable arrays rather than null.
 type Result struct {
 	Conditions  []string          `json:"conditions"`
-	Unresolved int               `json:"unresolved_threads"`
-	General    int               `json:"general_comments"`
-	Conflicts  bool              `json:"has_conflicts"`
-	Failing    []string          `json:"failing_checks"`
-	Pending    []string          `json:"pending_checks"`
+	Unresolved  int               `json:"unresolved_threads"`
+	General     int               `json:"general_comments"`
+	Conflicts   bool              `json:"has_conflicts"`
+	Failing     []string          `json:"failing_checks"`
+	Pending     []string          `json:"pending_checks"`
 	Annotations []CheckAnnotation `json:"annotations,omitempty"`
-	Threads    []ThreadSummary   `json:"threads"`
-	TimedOut   bool              `json:"timed_out"`
-	Cancelled  bool              `json:"cancelled"`
-	WatchedMs  int64             `json:"watched_ms"`
+	Threads     []ThreadSummary   `json:"threads"`
+	TimedOut    bool              `json:"timed_out"`
+	Cancelled   bool              `json:"cancelled"`
+	WatchedMs   int64             `json:"watched_ms"`
 }
 
 // MarshalJSON ensures nil slices produce [] instead of null in JSON output.
@@ -596,15 +596,15 @@ func buildResult(pr *PullRequest, conditions []string, timedOut, cancelled bool,
 
 	return &Result{
 		Conditions:  conditionsNormalized,
-		Unresolved: CountUnresolvedThreads(pr),
-		General:    len(pr.Comments.Nodes),
-		Conflicts:  HasConflicts(pr),
-		Failing:    failing,
-		Pending:    pending,
+		Unresolved:  CountUnresolvedThreads(pr),
+		General:     len(pr.Comments.Nodes),
+		Conflicts:   HasConflicts(pr),
+		Failing:     failing,
+		Pending:     pending,
 		Annotations: annotations,
-		Threads:    threads,
-		TimedOut:   timedOut,
-		Cancelled:  cancelled,
-		WatchedMs:  time.Since(startTime).Milliseconds(),
+		Threads:     threads,
+		TimedOut:    timedOut,
+		Cancelled:   cancelled,
+		WatchedMs:   time.Since(startTime).Milliseconds(),
 	}
 }

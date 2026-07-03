@@ -68,7 +68,7 @@ func TestCountUnresolvedThreads(t *testing.T) {
 
 func TestHasConflicts(t *testing.T) {
 	tests := []struct {
-		name       string
+		name      string
 		mergeable string
 		expected  bool
 	}{

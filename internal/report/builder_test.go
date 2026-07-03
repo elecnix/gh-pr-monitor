@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agynio/gh-pr-review/internal/report"
+	"github.com/elecnix/gh-pr-monitor/internal/report"
 )
 
 func TestBuildReportAggregatesThreads(t *testing.T) {

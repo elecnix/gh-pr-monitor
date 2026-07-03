@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/agynio/gh-pr-review/internal/draft"
-	"github.com/agynio/gh-pr-review/internal/resolver"
+	"github.com/elecnix/gh-pr-monitor/internal/draft"
+	"github.com/elecnix/gh-pr-monitor/internal/resolver"
 )
 
 func newDraftCommand() *cobra.Command {
@@ -227,7 +227,7 @@ func runDraftStatus(cmd *cobra.Command, opts *draftActionOptions) error {
 
 func runDraftList(cmd *cobra.Command, opts *draftListOptions) error {
 	inferRepo(&opts.Repo)
-	
+
 	// Use a dummy selector for list operations
 	selector := "1"
 	normalizedSelector, err := resolver.NormalizeSelector(selector, 1)

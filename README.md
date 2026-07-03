@@ -1,4 +1,4 @@
-# gh-pr-review
+# gh-pr-monitor
 
 A GitHub CLI extension for inline PR review comments and thread inspection in the terminal.
 
@@ -27,16 +27,16 @@ GitHub's built-in `gh` tool does not show inline comments, review threads, or th
 ## Installation
 
 ```sh
-gh extension install elecnix/gh-pr-review
-gh extension upgrade elecnix/gh-pr-review  # Update existing installation
+gh extension install elecnix/gh-pr-monitor
+gh extension upgrade elecnix/gh-pr-monitor  # Update existing installation
 ```
 
 ### Agent Skill
 
-Register with your AI agent using the [SKILL.md](skills/gh-pr-review/SKILL.md) definition:
+Register with your AI agent using the [SKILL.md](skills/gh-pr-monitor/SKILL.md) definition:
 
 ```bash
-npx skills add elecnix/gh-pr-review
+npx skills add elecnix/gh-pr-monitor
 ```
 
 ## Commands
@@ -82,17 +82,17 @@ See [skills/references/USAGE.md](skills/references/USAGE.md) for detailed usage.
 
 Basic workflow:
 
-1. Start a review: `gh pr-review review --start`
-2. Add comments: `gh pr-review review --add-comment --review-id <ID> --path <file> --line <N> --body "<msg>"`
-3. Submit review: `gh pr-review review --submit --review-id <ID> --event APPROVE`
-4. Resolve threads: `gh pr-review threads resolve --thread-id <ID>`
+1. Start a review: `gh pr-monitor review --start`
+2. Add comments: `gh pr-monitor review --add-comment --review-id <ID> --path <file> --line <N> --body "<msg>"`
+3. Submit review: `gh pr-monitor review --submit --review-id <ID> --event APPROVE`
+4. Resolve threads: `gh pr-monitor threads resolve --thread-id <ID>`
 
 ### Adding Reactions
 
 Add reactions to any GitHub node (comments, reviews, etc.):
 
 ```sh
-gh pr-review react <comment_id> --type thumbs_up
+gh pr-monitor react <comment_id> --type thumbs_up
 ```
 
 Valid reaction types: `thumbs_up`, `thumbs_down`, `laugh`, `hooray`, `confused`, `heart`, `rocket`, `eyes`
@@ -101,10 +101,10 @@ When inside a git repository, `-R owner/repo` and PR number are inferred automat
 
 ### Viewing Reviews
 
-`gh pr-review review view` shows all reviews, inline comments, and replies:
+`gh pr-monitor review view` shows all reviews, inline comments, and replies:
 
 ```sh
-gh pr-review review view -R owner/repo --pr 3
+gh pr-monitor review view -R owner/repo --pr 3
 ```
 
 Common filters:
@@ -116,7 +116,7 @@ Common filters:
 Reply to threads using the `thread_id` from the view output:
 
 ```sh
-gh pr-review comments reply --thread-id <ID> --body "<msg>"
+gh pr-monitor comments reply --thread-id <ID> --body "<msg>"
 ```
 
 ### Managing Threads
@@ -125,16 +125,16 @@ List and resolve threads:
 
 ```sh
 # List unresolved threads
-gh pr-review threads list --unresolved
+gh pr-monitor threads list --unresolved
 
 # List only your threads
-gh pr-review threads list --mine
+gh pr-monitor threads list --mine
 
 # Resolve a thread
-gh pr-review threads resolve --thread-id <ID>
+gh pr-monitor threads resolve --thread-id <ID>
 
 # View full conversation for specific threads
-gh pr-review threads view <thread_id> <thread_id>
+gh pr-monitor threads view <thread_id> <thread_id>
 ```
 
 ### Managing Draft Status
@@ -143,16 +143,16 @@ Check and manage pull request draft status:
 
 ```sh
 # Check if PR is a draft
-gh pr-review draft status --repo owner/repo --pr 123
+gh pr-monitor draft status --repo owner/repo --pr 123
 
 # Mark PR as draft
-gh pr-review draft mark --repo owner/repo --pr 123
+gh pr-monitor draft mark --repo owner/repo --pr 123
 
 # Mark PR as ready for review
-gh pr-review draft ready --repo owner/repo --pr 123
+gh pr-monitor draft ready --repo owner/repo --pr 123
 
 # List all draft PRs in repository
-gh pr-review draft list --repo owner/repo
+gh pr-monitor draft list --repo owner/repo
 ```
 
 ### Deleting Comments
@@ -160,7 +160,7 @@ gh pr-review draft list --repo owner/repo
 Delete a comment from a pending review:
 
 ```sh
-gh pr-review review --delete-comment --comment-id <comment_id>
+gh pr-monitor review --delete-comment --comment-id <comment_id>
 ```
 
 This only works on comments in pending reviews. Once a review is submitted, comments cannot be deleted.
@@ -171,13 +171,13 @@ Poll a pull request until it needs attention (new comments, merge conflicts, or 
 
 ```sh
 # Check once and exit
-gh pr-review await --check-only -R owner/repo 42
+gh pr-monitor await --check-only -R owner/repo 42
 
 # Poll until work detected (default: 1 day timeout, 5 minute interval)
-gh pr-review await -R owner/repo 42
+gh pr-monitor await -R owner/repo 42
 
 # Poll for comments only with custom timeout
-gh pr-review await --mode comments --timeout 3600 -R owner/repo 42
+gh pr-monitor await --mode comments --timeout 3600 -R owner/repo 42
 ```
 
 Exit codes:

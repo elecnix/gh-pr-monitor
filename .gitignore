@@ -5,6 +5,6 @@ bin/
 TASKS.md
 
 # Go binaries
-gh-pr-review
+gh-pr-monitor
 *.exe
 .pi/

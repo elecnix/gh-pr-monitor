@@ -1,4 +1,4 @@
-module github.com/agynio/gh-pr-review
+module github.com/elecnix/gh-pr-monitor
 
 go 1.22
 

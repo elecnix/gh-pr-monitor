@@ -3,8 +3,8 @@ package draft
 import (
 	"fmt"
 
-	"github.com/agynio/gh-pr-review/internal/ghcli"
-	"github.com/agynio/gh-pr-review/internal/resolver"
+	"github.com/elecnix/gh-pr-monitor/internal/ghcli"
+	"github.com/elecnix/gh-pr-monitor/internal/resolver"
 )
 
 // Service exposes pull request draft operations.
@@ -24,9 +24,9 @@ type ActionOptions struct {
 
 // ActionResult captures the outcome of a draft/ready mutation.
 type ActionResult struct {
-	PRNumber   int    `json:"pr_number"`
-	IsDraft    bool   `json:"is_draft"`
-	Status     string `json:"status"`
+	PRNumber int    `json:"pr_number"`
+	IsDraft  bool   `json:"is_draft"`
+	Status   string `json:"status"`
 }
 
 // DraftInfo contains information about a PR's draft status.
@@ -62,9 +62,9 @@ func (s *Service) Status(pr resolver.Identity, opts ActionOptions) (DraftInfo, e
 	var resp struct {
 		Repository struct {
 			PullRequest *struct {
-				Number int    `json:"number"`
-				Title  string `json:"title"`
-				IsDraft bool  `json:"isDraft"`
+				Number  int    `json:"number"`
+				Title   string `json:"title"`
+				IsDraft bool   `json:"isDraft"`
 			} `json:"pullRequest"`
 		} `json:"repository"`
 	}
@@ -95,9 +95,9 @@ func (s *Service) List(pr resolver.Identity) ([]DraftInfo, error) {
 		Repository struct {
 			PullRequests struct {
 				Nodes []struct {
-					Number int    `json:"number"`
-					Title  string `json:"title"`
-					IsDraft bool  `json:"isDraft"`
+					Number  int    `json:"number"`
+					Title   string `json:"title"`
+					IsDraft bool   `json:"isDraft"`
 				} `json:"nodes"`
 			} `json:"pullRequests"`
 		} `json:"repository"`
@@ -190,8 +190,8 @@ func (s *Service) convertToDraft(nodeID string) (ActionResult, error) {
 	var resp struct {
 		ConvertPullRequestToDraft struct {
 			PullRequest struct {
-				Number  int    `json:"number"`
-				IsDraft bool   `json:"isDraft"`
+				Number  int  `json:"number"`
+				IsDraft bool `json:"isDraft"`
 			} `json:"pullRequest"`
 		} `json:"convertPullRequestToDraft"`
 	}
@@ -212,8 +212,8 @@ func (s *Service) markReadyForReview(nodeID string) (ActionResult, error) {
 	var resp struct {
 		MarkPullRequestReadyForReview struct {
 			PullRequest struct {
-				Number  int    `json:"number"`
-				IsDraft bool   `json:"isDraft"`
+				Number  int  `json:"number"`
+				IsDraft bool `json:"isDraft"`
 			} `json:"pullRequest"`
 		} `json:"markPullRequestReadyForReview"`
 	}

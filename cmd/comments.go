@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/agynio/gh-pr-review/internal/comments"
-	"github.com/agynio/gh-pr-review/internal/resolver"
+	"github.com/elecnix/gh-pr-monitor/internal/comments"
+	"github.com/elecnix/gh-pr-monitor/internal/resolver"
 )
 
 type commentsOptions struct {
@@ -26,7 +26,7 @@ func newCommentsCommand() *cobra.Command {
 			if err := cmd.Help(); err != nil {
 				return err
 			}
-			return errors.New("use 'gh pr-review comments reply' to respond to a review thread; run 'gh pr-review review view' to locate thread IDs")
+			return errors.New("use 'gh pr-monitor comments reply' to respond to a review thread; run 'gh pr-monitor review view' to locate thread IDs")
 		},
 	}
 
