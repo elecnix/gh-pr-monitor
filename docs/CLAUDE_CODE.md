@@ -55,6 +55,42 @@ ${XDG_CONFIG_HOME:-~/.config}/gh-pr-monitor/preferences.json
 
 Each template is a string with `{token}` placeholders (e.g. `{prLabel}`, `{failingChecks}`, `{commitAuthor}`). A template value with no `{token}` is rejected; set a key to `null` to reset it to the built-in default. Non-template config keys `ignoredBots` (author logins to silence) and `retriggerComments` live in the same file. See the `monitor` section of the [README](../README.md) for the token and key list.
 
+## Auto-start on `gh pr create`
+
+To be nudged to start a monitor the moment you open a PR, add a Claude Code
+[`PostToolUse` hook](https://docs.claude.com/en/docs/claude-code/hooks) that
+watches `Bash` invocations, and when one is a `gh pr create`, extracts the
+created PR URL from the command output and prints a reminder. The hook's stdout
+becomes context Claude sees, so it reads the suggestion and can register the
+`Monitor` for you. This mirrors `pi-ghpr-monitor`'s `prCreateNudge`.
+
+In `~/.claude/settings.json` (or a project `.claude/settings.json`):
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r 'select(.tool_name==\"Bash\" and (.tool_input.command | test(\"gh pr create\"))) | .tool_response.stdout // \"\"' | grep -oE 'https://github\\.com/[^ ]+/pull/[0-9]+' | head -n1 | sed 's|^|Start monitoring: gh pr-monitor monitor |'"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The one-liner reads the hook's JSON payload on stdin: it fires only for a `Bash`
+call whose command contains `gh pr create`, pulls the first `.../pull/<n>` URL
+out of the command's stdout, and emits e.g.
+`Start monitoring: gh pr-monitor monitor https://github.com/owner/repo/pull/42`.
+When the command wasn't a `gh pr create` (or created no PR) the pipeline prints
+nothing and the hook is a no-op.
+
 ## Relationship to `await`
 
 `await` returns **once** when a PR needs attention (good for a single "wait until X" gate). `monitor` runs **continuously**, emitting an event per change until merge/close — that is the shape a persistent watcher wants. Use `await` for one-shot gating; use `monitor` under Claude Code's `Monitor`.

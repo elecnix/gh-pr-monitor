@@ -90,8 +90,12 @@ func TestMonitorOnceTextMode(t *testing.T) {
 
 	out := stdout.String()
 	assert.NotContains(t, out, `"type":`) // not JSON
-	assert.Contains(t, out, "📡 Monitoring o/r#7 (polling every 60s)")
-	assert.Contains(t, out, "❌ Failing CI checks on o/r#7: build")
+	// The PR label is OSC-8 linkified in --text mode; the surrounding rendered
+	// text is unchanged.
+	assert.Contains(t, out, "\x1b]8;;https://github.com/o/r/pull/7\x1b\\o/r#7\x1b]8;;\x1b\\")
+	assert.Contains(t, out, "📡 Monitoring ")
+	assert.Contains(t, out, "❌ Failing CI checks on ")
+	assert.Contains(t, out, ": build")
 }
 
 func TestMonitorRequiresPR(t *testing.T) {

@@ -133,7 +133,13 @@ func runMonitor(cmd *cobra.Command, opts *monitorOptions) error {
 
 	emit := func(n monitor.Notification) {
 		if opts.Text {
-			fmt.Fprintln(cmd.OutOrStdout(), n.Message)
+			out := cmd.OutOrStdout()
+			fmt.Fprintln(out, monitor.LinkifyText(n))
+			if n.Detail != "" {
+				for _, line := range strings.Split(n.Detail, "\n") {
+					fmt.Fprintf(out, "  %s\n", line)
+				}
+			}
 			return
 		}
 		if err := encodeJSON(cmd, n); err != nil {
