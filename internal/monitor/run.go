@@ -30,16 +30,22 @@ const (
 // single NDJSON line; a persistent watcher (e.g. Claude Code's Monitor tool)
 // surfaces each line as a session notification.
 type Notification struct {
-	Type              string    `json:"type"`
-	PRLabel           string    `json:"pr_label"`
-	Message           string    `json:"message"`
-	UnresolvedThreads int       `json:"unresolved_threads,omitempty"`
-	GeneralComments   int       `json:"general_comments,omitempty"`
-	FailingChecks     []string  `json:"failing_checks,omitempty"`
-	CommitShortOid    string    `json:"commit_short_oid,omitempty"`
-	CommitAuthor      string    `json:"commit_author,omitempty"`
-	ReviewAuthor      string    `json:"review_author,omitempty"`
-	Timestamp         time.Time `json:"timestamp"`
+	Type              string   `json:"type"`
+	PRLabel           string   `json:"pr_label"`
+	Message           string   `json:"message"`
+	UnresolvedThreads int      `json:"unresolved_threads,omitempty"`
+	GeneralComments   int      `json:"general_comments,omitempty"`
+	FailingChecks     []string `json:"failing_checks,omitempty"`
+	CommitShortOid    string   `json:"commit_short_oid,omitempty"`
+	CommitAuthor      string   `json:"commit_author,omitempty"`
+	ReviewAuthor      string   `json:"review_author,omitempty"`
+	// Detail is a rich, self-contained body (thread/comment excerpts + hints) so
+	// a consumer can act without extra API calls (new-*-threads/comments only).
+	Detail string `json:"detail,omitempty"`
+	// PRUrl and CommitUrl back the OSC-8 links in --text output.
+	PRUrl     string    `json:"pr_url,omitempty"`
+	CommitUrl string    `json:"commit_url,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
 }
 
 // RunOptions configures a monitor run.
@@ -110,6 +116,15 @@ func Run(ctx context.Context, svc *Service, opts RunOptions, emit func(Notificat
 		deadline = opts.now().Add(opts.Timeout)
 	}
 
+	// diff selects the per-poll change detector. With RetriggerComments the loop
+	// re-emits every open thread/comment on each poll (via DiffRetrigger); since
+	// an open item keeps changes flowing, noChange rarely accrues and the idle
+	// backoff is effectively disabled — pair it with a longer --interval.
+	diff := Diff
+	if opts.Prefs.RetriggerComments {
+		diff = DiffRetrigger
+	}
+
 	var prev *PRStatus
 	noChange := 0
 	errBackoff := time.Duration(0)
@@ -137,7 +152,7 @@ func Run(ctx context.Context, svc *Service, opts RunOptions, emit func(Notificat
 		if firstPoll {
 			emit(renderNotification(opts, curr, firstPollType, Event{}))
 		} else {
-			events := Diff(prev, curr)
+			events := diff(prev, curr)
 			for _, ev := range events {
 				emit(renderNotification(opts, curr, string(ev.Type), ev))
 				if ev.Type == EventMerged || ev.Type == EventClosed {
@@ -245,6 +260,7 @@ func renderNotification(opts RunOptions, status *PRStatus, typ string, ev Event)
 		Message:   prefs.Interpolate(opts.Prefs.Templates[typ], vars),
 		Timestamp: opts.now(),
 	}
+	n.PRUrl = vars["prUrl"]
 	if status != nil {
 		n.UnresolvedThreads = len(status.UnresolvedThreads)
 		n.GeneralComments = len(status.GeneralComments)
@@ -256,10 +272,15 @@ func renderNotification(opts RunOptions, status *PRStatus, typ string, ev Event)
 		} else if status != nil {
 			n.FailingChecks = status.FailingChecks
 		}
+	case EventNewUnresolvedThreads:
+		n.Detail = threadsDetail(ev.Threads)
+	case EventNewGeneralComments:
+		n.Detail = commentsDetail(ev.Comments)
 	case EventNewCommit:
 		if ev.Commit != nil {
 			n.CommitShortOid = ev.Commit.ShortOid
 			n.CommitAuthor = ev.Commit.Author
+			n.CommitUrl = vars["commitUrl"]
 		}
 	case EventReviewApproved, EventReviewChangesRequested, EventReviewDismissed:
 		n.ReviewAuthor = ev.ReviewAuthor

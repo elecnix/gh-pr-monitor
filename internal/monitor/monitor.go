@@ -59,6 +59,7 @@ const MONITOR_QUERY = `query MonitorPR($owner: String!, $repo: String!, $number:
               body
               author { login }
               createdAt
+              diffHunk
               reactionGroups { content users { totalCount } }
             }
           }
@@ -127,6 +128,7 @@ type Comment struct {
 	ReactionGroups []ReactionGroup `json:"reactionGroups"`
 	Path           string          `json:"path"`
 	Line           *int            `json:"line"`
+	DiffHunk       string          `json:"diffHunk"`
 }
 
 // ReactionGroup is one content bucket of a comment's reactions.
@@ -254,6 +256,12 @@ type ThreadSummary struct {
 	Path       string   `json:"path,omitempty"`
 	Line       *int     `json:"line,omitempty"`
 	CommentIDs []string `json:"comment_ids"`
+	// Author and Body come from the thread's LAST comment (the most recent
+	// point of the conversation); DiffHunk comes from the FIRST comment (the
+	// anchor the thread was opened against). All present only for detail bodies.
+	Author   string `json:"author,omitempty"`
+	Body     string `json:"body,omitempty"`
+	DiffHunk string `json:"diff_hunk,omitempty"`
 }
 
 // GeneralComment is a distilled, actionable general PR comment.
@@ -326,12 +334,20 @@ func Snapshot(pr *PullRequest, opts SnapshotOptions) *PRStatus {
 		for i := range t.Comments.Nodes {
 			ids = append(ids, t.Comments.Nodes[i].ID)
 		}
-		status.UnresolvedThreads = append(status.UnresolvedThreads, ThreadSummary{
+		summary := ThreadSummary{
 			ID:         t.ID,
 			Path:       t.Path,
 			Line:       t.Line,
 			CommentIDs: ids,
-		})
+		}
+		if last := lastComment(t.Comments.Nodes); last != nil {
+			summary.Author = last.Author.Login
+			summary.Body = last.Body
+		}
+		if len(t.Comments.Nodes) > 0 {
+			summary.DiffHunk = t.Comments.Nodes[0].DiffHunk
+		}
+		status.UnresolvedThreads = append(status.UnresolvedThreads, summary)
 	}
 
 	for i := range pr.Comments.Nodes {

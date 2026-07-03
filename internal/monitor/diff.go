@@ -50,8 +50,30 @@ type Event struct {
 // that want to surface the current state on first poll should read the PRStatus
 // directly rather than relying on Diff.
 func Diff(prev *PRStatus, curr *PRStatus) []Event {
+	return diffImpl(prev, curr, false)
+}
+
+// DiffRetrigger is like Diff but diffs the thread and general-comment portions
+// against an EMPTY baseline, so every currently-open unresolved thread and
+// general comment re-emits on each poll (the retriggerComments preference).
+// Checks / CI-green / review / commit / state transitions still diff against the
+// real prev so those don't spam. The prev==nil first poll stays silent.
+func DiffRetrigger(prev *PRStatus, curr *PRStatus) []Event {
+	return diffImpl(prev, curr, true)
+}
+
+func diffImpl(prev *PRStatus, curr *PRStatus, retrigger bool) []Event {
 	if prev == nil || curr == nil {
 		return nil
+	}
+
+	// Under retrigger, threads/comments diff against an empty baseline so open
+	// items re-notify every poll; everything else still diffs against prev.
+	threadPrev := prev.UnresolvedThreads
+	commentPrev := prev.GeneralComments
+	if retrigger {
+		threadPrev = nil
+		commentPrev = nil
 	}
 
 	var events []Event
@@ -74,12 +96,12 @@ func Diff(prev *PRStatus, curr *PRStatus) []Event {
 	}
 
 	// New or updated unresolved threads.
-	if newThreads := diffNewThreads(prev.UnresolvedThreads, curr.UnresolvedThreads); len(newThreads) > 0 {
+	if newThreads := diffNewThreads(threadPrev, curr.UnresolvedThreads); len(newThreads) > 0 {
 		events = append(events, Event{Type: EventNewUnresolvedThreads, Threads: newThreads})
 	}
 
 	// New general comments.
-	if newComments := diffNewComments(prev.GeneralComments, curr.GeneralComments); len(newComments) > 0 {
+	if newComments := diffNewComments(commentPrev, curr.GeneralComments); len(newComments) > 0 {
 		events = append(events, Event{Type: EventNewGeneralComments, Comments: newComments})
 	}
 

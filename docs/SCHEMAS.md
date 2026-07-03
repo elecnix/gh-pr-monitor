@@ -461,6 +461,18 @@ Emitted by `monitor` as one NDJSON object per line (one event per genuinely-new 
       "type": "string",
       "description": "Author of the review decision (review-* events)"
     },
+    "detail": {
+      "type": "string",
+      "description": "Rich, self-contained body with per-thread/comment excerpts and act-on-it hints (new-unresolved-threads / new-general-comments); lets a consumer act without extra API calls"
+    },
+    "pr_url": {
+      "type": "string",
+      "description": "PR web URL, used for OSC-8 links in --text output"
+    },
+    "commit_url": {
+      "type": "string",
+      "description": "Commit web URL, used for the OSC-8 link on the short SHA (new-commit)"
+    },
     "timestamp": {
       "type": "string",
       "format": "date-time",

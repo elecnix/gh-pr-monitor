@@ -232,6 +232,43 @@ func TestDiff_StateTransitions(t *testing.T) {
 	})
 }
 
+func TestDiffRetrigger(t *testing.T) {
+	line := 5
+	thread := ThreadSummary{ID: "T1", Path: "a.go", Line: &line, CommentIDs: []string{"C1"}}
+	prev := &PRStatus{
+		UnresolvedThreads: []ThreadSummary{thread},
+		GeneralComments:   []GeneralComment{{ID: "G1", Author: "alice", Body: "hi"}},
+	}
+	curr := &PRStatus{
+		UnresolvedThreads: []ThreadSummary{thread},
+		GeneralComments:   []GeneralComment{{ID: "G1", Author: "alice", Body: "hi"}},
+	}
+
+	t.Run("plain Diff sees no change", func(t *testing.T) {
+		assert.Empty(t, Diff(prev, curr))
+	})
+
+	t.Run("retrigger re-emits open thread and comment every poll", func(t *testing.T) {
+		events := DiffRetrigger(prev, curr)
+		et := findEvent(events, EventNewUnresolvedThreads)
+		require.NotNil(t, et)
+		assert.Equal(t, "T1", et.Threads[0].ID)
+		ec := findEvent(events, EventNewGeneralComments)
+		require.NotNil(t, ec)
+		assert.Equal(t, "G1", ec.Comments[0].ID)
+	})
+
+	t.Run("failing checks still dedup under retrigger", func(t *testing.T) {
+		p := &PRStatus{FailingChecks: []string{"CI"}}
+		c := &PRStatus{FailingChecks: []string{"CI"}}
+		assert.Nil(t, findEvent(DiffRetrigger(p, c), EventNewFailingChecks))
+	})
+
+	t.Run("first-poll baseline stays silent under retrigger", func(t *testing.T) {
+		assert.Empty(t, DiffRetrigger(nil, curr))
+	})
+}
+
 func TestDiff_MultipleEventsInOnePass(t *testing.T) {
 	prev := &PRStatus{
 		State:         "OPEN",

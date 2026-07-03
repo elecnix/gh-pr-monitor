@@ -218,6 +218,10 @@ gh pr-monitor monitor --once -R owner/repo 42
 - `--once` - Fetch once, emit the current actionable state, and exit
 - `--text` - Emit the rendered message per event instead of NDJSON
 
+`new-unresolved-threads` and `new-general-comments` events carry a rich `detail` body — the thread/comment location, author, text, a diff excerpt centered on the anchored line, and the exact commands to reply/resolve or 👍-acknowledge — so a consumer can act without extra API calls. In `--text` mode the PR label and commit SHA are wrapped in OSC-8 hyperlinks (clickable in supporting terminals, plain text elsewhere) and any `detail` body is printed, indented, beneath the message.
+
+Set `retriggerComments: true` in the preferences file to re-emit every open unresolved thread and general comment on _each_ poll (instead of only genuinely-new ones). This is chatty and effectively disables the idle backoff, so pair it with a longer `--interval`. Check/CI/review/commit/state events still de-duplicate normally.
+
 Notification wording is templated and user-overridable via `${XDG_CONFIG_HOME:-~/.config}/gh-pr-monitor/preferences.json`.
 
 #### Use with Claude Code
