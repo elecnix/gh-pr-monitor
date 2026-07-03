@@ -1,6 +1,6 @@
 # gh-pr-monitor
 
-A GitHub CLI extension for inline PR review comments and thread inspection in the terminal.
+A GitHub CLI extension for inline PR review comments, thread inspection, and live PR monitoring in the terminal — built to be driven by coding agents such as Claude Code.
 
 This fork of [agynio/gh-pr-review](https://github.com/agynio/gh-pr-review) adds features for developers, DevOps teams, and AI systems that need complete pull request review context.
 
@@ -23,6 +23,8 @@ GitHub's built-in `gh` tool does not show inline comments, review threads, or th
 - Export structured JSON for LLMs and automation
 - Manage pull request draft status (mark as draft/ready for review)
 - List all draft pull requests in a repository
+- Poll a PR until it needs attention (`await`)
+- Continuously monitor a PR and stream one event per change (`monitor`) — designed to be wrapped by [Claude Code](https://claude.com/claude-code)'s persistent `Monitor` tool for live, agent-driven PR notifications
 
 ## Installation
 
@@ -226,7 +228,13 @@ Notification wording is templated and user-overridable via `${XDG_CONFIG_HOME:-~
 
 #### Use with Claude Code
 
-`monitor` is designed to be wrapped by [Claude Code](https://claude.com/claude-code)'s persistent `Monitor` tool: each NDJSON line becomes a session notification, so the agent reacts to review comments, CI failures, conflicts, and new commits as they happen. The command handles polling and change-detection; the harness handles delivery and turn-batching.
+`monitor` is designed to be wrapped by [Claude Code](https://claude.com/claude-code)'s persistent `Monitor` tool: each NDJSON line becomes a session notification, so the agent reacts to review comments, CI failures, conflicts, and new commits as they happen. The command handles polling and change-detection; the harness handles delivery and turn-batching (events that arrive mid-turn are queued and flushed when the turn ends).
+
+In practice you don't write the tool call yourself — you ask Claude Code in plain language, e.g.:
+
+> Monitor PR 42 in this repo and address review comments as they come in.
+
+Claude then registers a persistent monitor whose command is this tool:
 
 ```
 Monitor({
@@ -236,7 +244,9 @@ Monitor({
 })
 ```
 
-The watch auto-stops when the PR is merged or closed. See [docs/CLAUDE_CODE.md](docs/CLAUDE_CODE.md) for the full guide, event→reaction mapping, and template customization.
+The watch runs in the background while Claude works, and **auto-stops** when the PR is merged or closed. To stop it earlier, tell Claude to stop monitoring (it calls `TaskStop`). Because 👍-acknowledged comments are dropped from the stream, the loop-breaker is: reply/fix, then resolve the thread or react 👍 — that item won't notify again.
+
+See [docs/CLAUDE_CODE.md](docs/CLAUDE_CODE.md) for the full guide, the event→reaction mapping, template customization, and a hook that auto-suggests monitoring right after `gh pr create`.
 
 ### Additional Flags
 
