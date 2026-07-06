@@ -14,12 +14,24 @@ func Execute() error {
 }
 
 func newRootCommand() *cobra.Command {
+	monitorOpts := &monitorOptions{}
+
 	cmd := &cobra.Command{
-		Use:           "gh-pr-monitor",
+		Use:           "gh-pr-monitor [<number> | <url>]",
 		Short:         "PR review helper commands for gh",
+		Long:          "Default command: continuously watch a pull request, emitting one event per genuinely-new change.\n\nRun 'gh pr-monitor --help' for subcommands.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		Args:          cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				monitorOpts.Selector = args[0]
+			}
+			return runMonitor(cmd, monitorOpts)
+		},
 	}
+
+	addMonitorFlags(cmd, monitorOpts)
 
 	cmd.AddCommand(newMonitorCommand())
 	cmd.AddCommand(newCommentsCommand())

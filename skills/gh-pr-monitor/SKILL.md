@@ -75,12 +75,14 @@ Edit or delete pending comments: `--edit-comment` / `--delete-comment` with `--c
 
 ### Monitor a PR
 
-Continuously stream one NDJSON event per genuinely-new change until merge/close:
+Monitor is the default command — just pass the PR selector directly. Continuously stream one NDJSON event per genuinely-new change until merge/close:
 
 ```sh
-gh pr-monitor monitor -R owner/repo <pr>        # NDJSON stream
-gh pr-monitor monitor --text -R owner/repo <pr> # Human-readable
-gh pr-monitor monitor --once -R owner/repo <pr> # One-shot, then exit
+gh pr-monitor -R owner/repo <pr>                    # Default command
+gh pr-monitor monitor -R owner/repo <pr>            # Explicit form
+gh pr-monitor watch -R owner/repo <pr>              # Short alias
+gh pr-monitor monitor --text -R owner/repo <pr>     # Human-readable
+gh pr-monitor monitor --once -R owner/repo <pr>     # One-shot, then exit
 ```
 
 Flags: `--interval` (default 60s, min 10), `--timeout` (default 0 = forever), `--ignored-bots <a,b>`.
@@ -104,7 +106,7 @@ Flags: `--interval` (default 60s, min 10), `--timeout` (default 0 = forever), `-
 **Claude Code integration:** Wrap in a persistent `Monitor` tool — each NDJSON line becomes a session notification:
 
 ```
-Monitor({ command: "gh pr-monitor monitor -R owner/repo 42", persistent: true })
+Monitor({ command: "gh pr-monitor -R owner/repo 42", persistent: true })
 ```
 
 **Adaptive backoff:** After 3 no-change polls, interval grows exponentially (cap 5min), resets on any change. Transient errors retry with doubling backoff — the loop doesn't crash.

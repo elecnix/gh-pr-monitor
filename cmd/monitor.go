@@ -21,8 +21,9 @@ func newMonitorCommand() *cobra.Command {
 	opts := &monitorOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "monitor <number> | <url>",
-		Short: "Continuously watch a pull request and stream events as they happen",
+		Use:     "monitor <number> | <url>",
+		Aliases: []string{"watch"},
+		Short:   "Continuously watch a pull request and stream events as they happen",
 		Long: `Continuously watch a pull request, emitting one event per genuinely-new
 change: new review threads, general comments, failing/green CI, merge
 conflicts, review decisions, new commits, and merge/close.
@@ -45,6 +46,12 @@ exponentially (capped at 5 minutes) and resets on any change.`,
 		},
 	}
 
+	addMonitorFlags(cmd, opts)
+
+	return cmd
+}
+
+func addMonitorFlags(cmd *cobra.Command, opts *monitorOptions) {
 	cmd.Flags().StringVarP(&opts.Repo, "repo", "R", "", "Repository in 'owner/repo' format")
 	cmd.Flags().IntVar(&opts.Pull, "pr", 0, "Pull request number")
 	cmd.Flags().IntVarP(&opts.Interval, "interval", "i", 60, "Polling interval in seconds (min 10)")
@@ -52,8 +59,6 @@ exponentially (capped at 5 minutes) and resets on any change.`,
 	cmd.Flags().StringVar(&opts.IgnoredBots, "ignored-bots", "", "Comma-separated author logins whose general comments are ignored")
 	cmd.Flags().BoolVar(&opts.Once, "once", false, "Fetch once, emit the current actionable state, and exit")
 	cmd.Flags().BoolVar(&opts.Text, "text", false, "Emit the rendered message per event instead of NDJSON")
-
-	return cmd
 }
 
 type monitorOptions struct {

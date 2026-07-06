@@ -75,7 +75,7 @@ In `~/.claude/settings.json` (or a project `.claude/settings.json`):
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r 'select(.tool_name==\"Bash\" and (.tool_input.command | test(\"gh pr create\"))) | .tool_response.stdout // \"\"' | grep -oE 'https://github\\.com/[^ ]+/pull/[0-9]+' | head -n1 | sed 's|^|Start monitoring: gh pr-monitor monitor |'"
+            "command": "jq -r 'select(.tool_name==\"Bash\" and (.tool_input.command | test(\"gh pr create\"))) | .tool_response.stdout // \"\"' | grep -oE 'https://github\\.com/[^ ]+/pull/[0-9]+' | head -n1 | sed 's|^|Start monitoring: gh pr-monitor |'"
           }
         ]
       }
@@ -87,7 +87,7 @@ In `~/.claude/settings.json` (or a project `.claude/settings.json`):
 The one-liner reads the hook's JSON payload on stdin: it fires only for a `Bash`
 call whose command contains `gh pr create`, pulls the first `.../pull/<n>` URL
 out of the command's stdout, and emits e.g.
-`Start monitoring: gh pr-monitor monitor https://github.com/owner/repo/pull/42`.
+`Start monitoring: gh pr-monitor https://github.com/owner/repo/pull/42`.
 When the command wasn't a `gh pr create` (or created no PR) the pipeline prints
 nothing and the hook is a no-op.
 
