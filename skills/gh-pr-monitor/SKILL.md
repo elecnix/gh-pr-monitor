@@ -9,7 +9,7 @@ A GitHub CLI extension built for coding agents (Claude Code, pi, etc.) — inlin
 
 ## When to Use
 
-Use when you need to interact with a PR: view/reply/resolve review threads, create reviews with inline comments, manage draft status, add reactions, poll for attention (`await`), or continuously monitor for events (`monitor`).
+Use when you need to interact with a PR: view/reply/resolve review threads, create reviews with inline comments, manage draft status, add reactions, or continuously monitor for events (`monitor`). Use `monitor --once` for a one-shot check.
 
 ## Installation
 
@@ -109,16 +109,7 @@ Monitor({ command: "gh pr-monitor monitor -R owner/repo 42", persistent: true })
 
 **Adaptive backoff:** After 3 no-change polls, interval grows exponentially (cap 5min), resets on any change. Transient errors retry with doubling backoff — the loop doesn't crash.
 
-### Await (poll until attention needed)
-
-```sh
-gh pr-monitor await --check-only -R owner/repo <pr>   # One-shot
-gh pr-monitor await -R owner/repo <pr>                # Poll until work (default: 1d timeout, 5min interval)
-gh pr-monitor await --mode comments --timeout 3600 -R owner/repo <pr>
-```
-
-Exit codes: `0` = work detected, `1` = error, `2` = timed out / no work.  
-Flags: `--mode <all|comments|conflicts|actions>`, `--timeout`, `--interval`, `--debounce`, `--check-only`.
+**One-shot check:** `gh pr-monitor monitor --once -R owner/repo <pr>` emits current actionable state and exits (replaces the removed `await` command).
 
 ## Critical Workflows
 

@@ -93,4 +93,10 @@ nothing and the hook is a no-op.
 
 ## Relationship to `await`
 
-`await` returns **once** when a PR needs attention (good for a single "wait until X" gate). `monitor` runs **continuously**, emitting an event per change until merge/close — that is the shape a persistent watcher wants. Use `await` for one-shot gating; use `monitor` under Claude Code's `Monitor`.
+The `await` command has been removed. Use these `monitor` equivalents:
+
+| Old `await` command | New `monitor` equivalent | Notes |
+|---|---|---|
+| `await --check-only` | `monitor --once` | Emits one or more NDJSON notifications instead of a single JSON `AwaitResult`; use `--text` for human-readable output. |
+| `await --mode all --timeout N` | `monitor --timeout N` | Continuous streaming instead of a single result at timeout. |
+| `await --mode comments` | not directly replaced | Use `monitor` — the event types (`new-unresolved-threads`, `new-general-comments`) give finer-grained control. |
