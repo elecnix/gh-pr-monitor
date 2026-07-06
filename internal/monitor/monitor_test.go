@@ -270,3 +270,227 @@ func TestSnapshot_JSONRoundTrip(t *testing.T) {
 	assert.True(t, strings.Contains(string(data), `"unresolved_threads":[]`))
 	assert.True(t, strings.Contains(string(data), `"general_comments":[]`))
 }
+
+// ---------------------------------------------------------------------------
+// Ref target tests
+// ---------------------------------------------------------------------------
+
+func TestFetchRef(t *testing.T) {
+	t.Run("sends query and unmarshals", func(t *testing.T) {
+		api := &fakeAPI{graphqlFunc: func(query string, variables map[string]interface{}, result interface{}) error {
+			assert.Contains(t, query, "MonitorRef")
+			assert.Equal(t, "octocat", variables["owner"])
+			assert.Equal(t, "hello", variables["repo"])
+			assert.Equal(t, "main", variables["ref"])
+			return assign(result, RefQueryResponse{
+				Repository: struct {
+					Ref *RefTarget `json:"ref"`
+				}{Ref: &RefTarget{Target: RefTarget{}.Target}},
+			})
+		}}
+		svc := &Service{API: api}
+		got, err := svc.FetchRef("octocat", "hello", "main")
+		require.NoError(t, err)
+		assert.Equal(t, "", got.Repository.Ref.Target.Oid)
+	})
+
+	t.Run("nil ref is an error", func(t *testing.T) {
+		api := &fakeAPI{graphqlFunc: func(query string, variables map[string]interface{}, result interface{}) error {
+			return assign(result, RefQueryResponse{})
+		}}
+		svc := &Service{API: api}
+		_, err := svc.FetchRef("o", "r", "nonexistent")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found")
+	})
+
+	t.Run("propagates API error", func(t *testing.T) {
+		api := &fakeAPI{graphqlFunc: func(query string, variables map[string]interface{}, result interface{}) error {
+			return errors.New("boom")
+		}}
+		svc := &Service{API: api}
+		_, err := svc.FetchRef("o", "r", "main")
+		require.Error(t, err)
+	})
+}
+
+func TestFetchCommit(t *testing.T) {
+	t.Run("sends query and unmarshals", func(t *testing.T) {
+		api := &fakeAPI{graphqlFunc: func(query string, variables map[string]interface{}, result interface{}) error {
+			assert.Contains(t, query, "MonitorCommit")
+			assert.Equal(t, "octocat", variables["owner"])
+			assert.Equal(t, "hello", variables["repo"])
+			assert.Equal(t, "abc123", variables["oid"])
+			return assign(result, CommitQueryResponse{
+				Repository: struct {
+					Object *CommitObject `json:"object"`
+				}{Object: &CommitObject{Oid: "abc123"}},
+			})
+		}}
+		svc := &Service{API: api}
+		got, err := svc.FetchCommit("octocat", "hello", "abc123")
+		require.NoError(t, err)
+		assert.Equal(t, "abc123", got.Repository.Object.Oid)
+	})
+
+	t.Run("nil object is an error", func(t *testing.T) {
+		api := &fakeAPI{graphqlFunc: func(query string, variables map[string]interface{}, result interface{}) error {
+			return assign(result, CommitQueryResponse{})
+		}}
+		svc := &Service{API: api}
+		_, err := svc.FetchCommit("o", "r", "abc")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found")
+	})
+}
+
+func TestSnapshotRef_Checks(t *testing.T) {
+	rt := RefTarget{}
+	rt.Target.Oid = "abc123"
+
+	// No checks data.
+	s := SnapshotRef(&rt)
+	assert.Equal(t, "abc123", s.Oid)
+	assert.Empty(t, s.FailingChecks)
+	assert.Empty(t, s.PendingChecks)
+}
+
+func TestSnapshotRef_WithCommitDetails(t *testing.T) {
+	rt := RefTarget{}
+	rt.Target.Oid = "def456"
+	rt.Target.MessageHeadline = "fix: stuff"
+	rt.Target.Authors = GitActorNodes{Nodes: []GitActor{{Name: "Grace", User: &struct {
+		Login string `json:"login"`
+	}{Login: "grace"}}}}
+	rt.Target.CheckSuites = SuiteNodes{Nodes: []CheckSuite{
+		{Conclusion: "FAILURE", App: AppInfo{Name: "CI"}},
+		{Status: "IN_PROGRESS", App: AppInfo{Name: "Deploy"}},
+	}}
+	rt.Target.Status = &CommitStatus{Contexts: []StatusContext{
+		{State: "FAILURE", Context: "circleci"},
+	}}
+
+	s := SnapshotRef(&rt)
+	assert.Equal(t, "def456", s.Oid)
+	assert.Equal(t, "def456", s.ShortOid)
+	assert.ElementsMatch(t, []string{"CI", "circleci"}, s.FailingChecks)
+	assert.ElementsMatch(t, []string{"Deploy"}, s.PendingChecks)
+	assert.Equal(t, "grace", s.Author)
+	assert.Equal(t, "fix: stuff", s.MessageHeadline)
+}
+
+// ---------------------------------------------------------------------------
+// Issue target tests
+// ---------------------------------------------------------------------------
+
+func mkIssueComment(id, author, body string, reacted bool) IssueComment {
+	c := IssueComment{ID: id, Body: body}
+	c.Author.Login = author
+	if reacted {
+		c.ReactionGroups = thumbsUp()
+	}
+	return c
+}
+
+func TestFetchIssue(t *testing.T) {
+	t.Run("sends query and unmarshals", func(t *testing.T) {
+		api := &fakeAPI{graphqlFunc: func(query string, variables map[string]interface{}, result interface{}) error {
+			assert.Contains(t, query, "MonitorIssue")
+			assert.Equal(t, "octocat", variables["owner"])
+			assert.Equal(t, "hello", variables["repo"])
+			assert.Equal(t, 42, variables["number"])
+			return assign(result, IssueQueryResponse{
+				Repository: struct {
+					Issue *IssueNode `json:"issue"`
+				}{Issue: &IssueNode{State: "OPEN"}},
+			})
+		}}
+		svc := &Service{API: api}
+		got, err := svc.FetchIssue("octocat", "hello", 42)
+		require.NoError(t, err)
+		assert.Equal(t, "OPEN", got.Repository.Issue.State)
+	})
+
+	t.Run("nil issue is an error", func(t *testing.T) {
+		api := &fakeAPI{graphqlFunc: func(query string, variables map[string]interface{}, result interface{}) error {
+			return assign(result, IssueQueryResponse{})
+		}}
+		svc := &Service{API: api}
+		_, err := svc.FetchIssue("o", "r", 1)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found")
+	})
+}
+
+func TestSnapshotIssue_Basic(t *testing.T) {
+	issue := &IssueNode{State: "OPEN", Title: "bug report"}
+	s := SnapshotIssue(issue, SnapshotOptions{})
+	assert.Equal(t, "OPEN", s.State)
+	assert.Equal(t, "bug report", s.Title)
+	assert.Empty(t, s.Comments)
+}
+
+func TestSnapshotIssue_CommentFiltering(t *testing.T) {
+	issue := &IssueNode{State: "OPEN", Comments: IssueCommentNodes{Nodes: []IssueComment{
+		mkIssueComment("C1", "alice", "hey", false),
+		mkIssueComment("C2", "bob", "done", true), // acked -> excluded
+		mkIssueComment("C3", "bot", "automated", false),
+	}}}
+
+	t.Run("ack filtering", func(t *testing.T) {
+		s := SnapshotIssue(issue, SnapshotOptions{})
+		require.Len(t, s.Comments, 2)
+		assert.Equal(t, "C1", s.Comments[0].ID)
+		assert.Equal(t, "C3", s.Comments[1].ID)
+	})
+
+	t.Run("ignored bots", func(t *testing.T) {
+		s := SnapshotIssue(issue, SnapshotOptions{IgnoredBots: []string{"bot"}})
+		require.Len(t, s.Comments, 1)
+		assert.Equal(t, "C1", s.Comments[0].ID)
+	})
+}
+
+func TestDiffIssues_StateChanges(t *testing.T) {
+	t.Run("open to closed", func(t *testing.T) {
+		prev := &IssueStatus{State: "OPEN"}
+		curr := &IssueStatus{State: "CLOSED"}
+		events := DiffIssues(prev, curr)
+		require.Len(t, events, 1)
+		assert.Equal(t, EventIssueClosed, events[0].Type)
+	})
+
+	t.Run("closed to open (reopened)", func(t *testing.T) {
+		prev := &IssueStatus{State: "CLOSED"}
+		curr := &IssueStatus{State: "OPEN"}
+		events := DiffIssues(prev, curr)
+		require.Len(t, events, 1)
+		assert.Equal(t, EventIssueReopened, events[0].Type)
+	})
+
+	t.Run("no state change", func(t *testing.T) {
+		prev := &IssueStatus{State: "OPEN"}
+		curr := &IssueStatus{State: "OPEN"}
+		events := DiffIssues(prev, curr)
+		assert.Empty(t, events)
+	})
+}
+
+func TestDiffIssues_NewComments(t *testing.T) {
+	prev := &IssueStatus{State: "OPEN", Comments: []IssueCommentSummary{{ID: "C1"}}}
+	curr := &IssueStatus{State: "OPEN", Comments: []IssueCommentSummary{
+		{ID: "C1", Author: "a", Body: "old"},
+		{ID: "C2", Author: "b", Body: "new"},
+	}}
+	events := DiffIssues(prev, curr)
+	require.Len(t, events, 1)
+	assert.Equal(t, EventIssueNewComment, events[0].Type)
+	require.Len(t, events[0].IssueComments, 1)
+	assert.Equal(t, "C2", events[0].IssueComments[0].ID)
+}
+
+func TestDiffIssues_NilPrev(t *testing.T) {
+	curr := &IssueStatus{State: "OPEN", Comments: []IssueCommentSummary{{ID: "C1"}}}
+	events := DiffIssues(nil, curr)
+	assert.Empty(t, events)
+}

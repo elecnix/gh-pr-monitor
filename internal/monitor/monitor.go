@@ -247,6 +247,201 @@ func (s *Service) Fetch(identity *resolver.Identity, number int) (*QueryResponse
 }
 
 // ---------------------------------------------------------------------------
+// Ref / commit monitoring
+// ---------------------------------------------------------------------------
+
+// MONITOR_REF_QUERY fetches the commit at the tip of a ref along with its
+// check suites and status contexts.
+const MONITOR_REF_QUERY = `query MonitorRef($owner: String!, $repo: String!, $ref: String!) {
+  repository(owner: $owner, name: $repo) {
+    ref(qualifiedName: $ref) {
+      target {
+        oid
+        ... on Commit {
+          messageHeadline
+          authors(first: 10) { nodes { name user { login } } }
+          checkSuites(last: 10) {
+            nodes {
+              conclusion
+              status
+              app { name slug }
+              checkRuns(last: 10) {
+                nodes { name conclusion status }
+              }
+            }
+          }
+          status { contexts { state context description targetUrl } }
+        }
+      }
+    }
+  }
+}`
+
+// MONITOR_COMMIT_QUERY fetches a specific commit by OID along with its check
+// suites and status contexts.
+const MONITOR_COMMIT_QUERY = `query MonitorCommit($owner: String!, $repo: String!, $oid: GitObjectID!) {
+  repository(owner: $owner, name: $repo) {
+    object(oid: $oid) {
+      ... on Commit {
+        oid
+        messageHeadline
+        authors(first: 10) { nodes { name user { login } } }
+        checkSuites(last: 10) {
+          nodes {
+            conclusion
+            status
+            app { name slug }
+            checkRuns(last: 10) {
+              nodes { name conclusion status }
+            }
+          }
+        }
+        status { contexts { state context description targetUrl } }
+      }
+    }
+  }
+}`
+
+// RefQueryResponse mirrors the GraphQL envelope for a ref query.
+type RefQueryResponse struct {
+	Repository struct {
+		Ref *RefTarget `json:"ref"`
+	} `json:"repository"`
+}
+
+// RefTarget holds the tip commit of a ref.
+type RefTarget struct {
+	Target struct {
+		Oid             string        `json:"oid"`
+		MessageHeadline string        `json:"messageHeadline"`
+		Authors         GitActorNodes `json:"authors"`
+		CheckSuites     SuiteNodes    `json:"checkSuites"`
+		Status          *CommitStatus `json:"status"`
+	} `json:"target"`
+}
+
+// CommitQueryResponse mirrors the GraphQL envelope for a commit query.
+type CommitQueryResponse struct {
+	Repository struct {
+		Object *CommitObject `json:"object"`
+	} `json:"repository"`
+}
+
+// CommitObject is the commit returned by repository.object.
+type CommitObject struct {
+	Oid             string        `json:"oid"`
+	MessageHeadline string        `json:"messageHeadline"`
+	Authors         GitActorNodes `json:"authors"`
+	CheckSuites     SuiteNodes    `json:"checkSuites"`
+	Status          *CommitStatus `json:"status"`
+}
+
+// FetchRef retrieves the monitoring snapshot for a branch ref.
+func (s *Service) FetchRef(owner, repo, ref string) (*RefQueryResponse, error) {
+	var result RefQueryResponse
+	err := s.API.GraphQL(MONITOR_REF_QUERY, map[string]interface{}{
+		"owner": owner,
+		"repo":  repo,
+		"ref":   ref,
+	}, &result)
+	if err != nil {
+		return nil, err
+	}
+	if result.Repository.Ref == nil {
+		return nil, fmt.Errorf("ref not found or not accessible")
+	}
+	return &result, nil
+}
+
+// FetchCommit retrieves the monitoring snapshot for a commit SHA.
+func (s *Service) FetchCommit(owner, repo, sha string) (*CommitQueryResponse, error) {
+	var result CommitQueryResponse
+	err := s.API.GraphQL(MONITOR_COMMIT_QUERY, map[string]interface{}{
+		"owner": owner,
+		"repo":  repo,
+		"oid":   sha,
+	}, &result)
+	if err != nil {
+		return nil, err
+	}
+	if result.Repository.Object == nil {
+		return nil, fmt.Errorf("commit not found or not accessible")
+	}
+	return &result, nil
+}
+
+// ---------------------------------------------------------------------------
+// Issue monitoring
+// ---------------------------------------------------------------------------
+
+// MONITOR_ISSUE_QUERY fetches an issue with its state, title, and latest
+// comments.
+const MONITOR_ISSUE_QUERY = `query MonitorIssue($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      state
+      title
+      comments(last: 25) {
+        nodes {
+          id
+          body
+          author { login }
+          createdAt
+          reactionGroups { content users { totalCount } }
+        }
+      }
+    }
+  }
+}`
+
+// IssueQueryResponse mirrors the GraphQL envelope for an issue query.
+type IssueQueryResponse struct {
+	Repository struct {
+		Issue *IssueNode `json:"issue"`
+	} `json:"repository"`
+}
+
+// IssueNode is the raw GraphQL issue payload.
+type IssueNode struct {
+	State    string            `json:"state"`
+	Title    string            `json:"title"`
+	Comments IssueCommentNodes `json:"comments"`
+}
+
+// IssueCommentNodes holds the list of issue comments.
+type IssueCommentNodes struct {
+	Nodes []IssueComment `json:"nodes"`
+}
+
+// IssueComment is a single issue comment.
+type IssueComment struct {
+	ID     string `json:"id"`
+	Body   string `json:"body"`
+	Author struct {
+		Login string `json:"login"`
+	} `json:"author"`
+	CreatedAt      string          `json:"createdAt"`
+	ReactionGroups []ReactionGroup `json:"reactionGroups"`
+}
+
+// FetchIssue retrieves the monitoring snapshot for an issue.
+func (s *Service) FetchIssue(owner, repo string, number int) (*IssueQueryResponse, error) {
+	var result IssueQueryResponse
+	err := s.API.GraphQL(MONITOR_ISSUE_QUERY, map[string]interface{}{
+		"owner":  owner,
+		"repo":   repo,
+		"number": number,
+	}, &result)
+	if err != nil {
+		return nil, err
+	}
+	if result.Repository.Issue == nil {
+		return nil, fmt.Errorf("issue not found or not accessible")
+	}
+	return &result, nil
+}
+
+// ---------------------------------------------------------------------------
 // Snapshot types
 // ---------------------------------------------------------------------------
 
@@ -546,4 +741,125 @@ func parseCoauthors(message string) []string {
 		}
 	}
 	return names
+}
+
+// ---------------------------------------------------------------------------
+// Ref snapshot types
+// ---------------------------------------------------------------------------
+
+// RefStatus is the stable snapshot for a ref/commit target.
+type RefStatus struct {
+	Oid             string   `json:"oid"`
+	ShortOid        string   `json:"short_oid"`
+	Author          string   `json:"author"`
+	MessageHeadline string   `json:"message_headline"`
+	FailingChecks   []string `json:"failing_checks"`
+	PendingChecks   []string `json:"pending_checks"`
+}
+
+// SnapshotRef distills a RefTarget into a RefStatus for CI-only monitoring.
+func SnapshotRef(ref *RefTarget) *RefStatus {
+	status := &RefStatus{
+		Oid: ref.Target.Oid,
+	}
+	if len(status.Oid) > 7 {
+		status.ShortOid = status.Oid[:7]
+	} else {
+		status.ShortOid = status.Oid
+	}
+	status.MessageHeadline = ref.Target.MessageHeadline
+	if len(ref.Target.Authors.Nodes) > 0 {
+		a := ref.Target.Authors.Nodes[0]
+		if a.User != nil && a.User.Login != "" {
+			status.Author = a.User.Login
+		} else {
+			status.Author = a.Name
+		}
+	}
+	status.FailingChecks = commitChecks(ref.Target.CheckSuites, ref.Target.Status, failingChecksFromCommit)
+	status.PendingChecks = commitChecks(ref.Target.CheckSuites, ref.Target.Status, pendingChecksFromCommit)
+	return status
+}
+
+// SnapshotCommit distills a CommitObject into a RefStatus for CI-only monitoring.
+func SnapshotCommit(c *CommitObject) *RefStatus {
+	target := RefTarget{}
+	target.Target.Oid = c.Oid
+	target.Target.MessageHeadline = c.MessageHeadline
+	target.Target.Authors = c.Authors
+	target.Target.CheckSuites = c.CheckSuites
+	target.Target.Status = c.Status
+	return SnapshotRef(&target)
+}
+
+// commitChecks extracts check names from check suites and status contexts
+// using the provided classifier function which takes a *PullRequest.
+func commitChecks(suites SuiteNodes, status *CommitStatus, classifier func(*PullRequest) []string) []string {
+	pr := &PullRequest{
+		Commits: CommitNodes{Nodes: []Commit{{Commit: CommitDetails{
+			CheckSuites: suites,
+			Status:      status,
+		}}}},
+	}
+	return classifier(pr)
+}
+
+// failingChecksFromCommit extracts failing check names from a synthetic PR.
+func failingChecksFromCommit(pr *PullRequest) []string {
+	return failingChecks(pr)
+}
+
+// pendingChecksFromCommit extracts pending check names from a synthetic PR.
+func pendingChecksFromCommit(pr *PullRequest) []string {
+	return pendingChecks(pr)
+}
+
+// ---------------------------------------------------------------------------
+// Issue snapshot types
+// ---------------------------------------------------------------------------
+
+// IssueCommentSummary is a distilled, actionable issue comment.
+type IssueCommentSummary struct {
+	ID     string `json:"id"`
+	Author string `json:"author"`
+	Body   string `json:"body"`
+}
+
+// IssueStatus is the stable snapshot for an issue target.
+type IssueStatus struct {
+	State    string                `json:"state"`
+	Title    string                `json:"title"`
+	Comments []IssueCommentSummary `json:"comments"`
+}
+
+// SnapshotIssue distills an IssueNode into an IssueStatus.
+func SnapshotIssue(issue *IssueNode, opts SnapshotOptions) *IssueStatus {
+	ignored := make(map[string]bool, len(opts.IgnoredBots))
+	for _, b := range opts.IgnoredBots {
+		ignored[b] = true
+	}
+
+	status := &IssueStatus{
+		State:    issue.State,
+		Title:    issue.Title,
+		Comments: []IssueCommentSummary{},
+	}
+
+	for i := range issue.Comments.Nodes {
+		c := &issue.Comments.Nodes[i]
+		// Reuse the same ack check: thumbs-up on a comment acknowledges it.
+		if isAcknowledged(&Comment{ReactionGroups: c.ReactionGroups}) {
+			continue
+		}
+		if ignored[c.Author.Login] {
+			continue
+		}
+		status.Comments = append(status.Comments, IssueCommentSummary{
+			ID:     c.ID,
+			Author: c.Author.Login,
+			Body:   c.Body,
+		})
+	}
+
+	return status
 }

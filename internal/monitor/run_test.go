@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -159,4 +160,178 @@ func TestIdleInterval(t *testing.T) {
 	assert.Equal(t, base, idleInterval(base, 3))              // growth starts after 3
 	assert.Equal(t, 2*base, idleInterval(base, 4))            // base * 2^1
 	assert.Equal(t, maxIdleInterval, idleInterval(base, 100)) // capped
+}
+
+// ---------------------------------------------------------------------------
+// Run / Once with ref target
+// ---------------------------------------------------------------------------
+
+func mkRefCommit(oid string, failing []string) *RefTarget {
+	runs := make([]CheckRun, 0, len(failing))
+	for _, name := range failing {
+		runs = append(runs, CheckRun{Name: name, Conclusion: "FAILURE"})
+	}
+	rt := &RefTarget{}
+	rt.Target.Oid = oid
+	rt.Target.MessageHeadline = "headline"
+	rt.Target.CheckSuites = SuiteNodes{Nodes: []CheckSuite{{App: AppInfo{Name: "CI"}, CheckRuns: RunNodes{Nodes: runs}}}}
+	rt.Target.Authors = GitActorNodes{Nodes: []GitActor{{Name: "test", User: &struct {
+		Login string `json:"login"`
+	}{Login: "test"}}}}
+	return rt
+}
+
+func scriptedRefAPI(responses []*RefTarget) *fakeAPI {
+	call := 0
+	return &fakeAPI{graphqlFunc: func(query string, variables map[string]interface{}, result interface{}) error {
+		idx := call
+		if idx >= len(responses) {
+			idx = len(responses) - 1
+		}
+		call++
+		return assign(result, RefQueryResponse{Repository: struct {
+			Ref *RefTarget `json:"ref"`
+		}{Ref: responses[idx]}})
+	}}
+}
+
+func TestRunRef_StreamsCIEvents(t *testing.T) {
+	api := scriptedRefAPI([]*RefTarget{
+		mkRefCommit("abc", nil),               // baseline, clean
+		mkRefCommit("abc", []string{"build"}), // failing appears
+		mkRefCommit("abc", nil),               // all green
+		mkRefCommit("def", nil),               // new commit
+	})
+	svc := &Service{API: api}
+
+	opts := testRunOptions()
+	opts.Identity = resolver.Identity{Owner: "o", Repo: "r", Ref: "main", Target: "ref", Host: "github.com"}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	var got []Notification
+	var firstPollSeen, failingSeen, greenSeen, commitSeen bool
+	opts.Sleep = func(ctx context.Context, d time.Duration) error {
+		// Check if we've seen enough events, then cancel.
+		if firstPollSeen && failingSeen && greenSeen && commitSeen {
+			cancel()
+			return context.Canceled
+		}
+		return nil
+	}
+
+	err := Run(ctx, svc, opts, func(n Notification) {
+		got = append(got, n)
+		switch n.Type {
+		case firstPollType:
+			firstPollSeen = true
+		case string(EventNewFailingChecks):
+			failingSeen = true
+		case string(EventCIAllGreen):
+			greenSeen = true
+		case string(EventNewCommit):
+			commitSeen = true
+		}
+	})
+	require.True(t, errors.Is(err, context.Canceled) || err == nil)
+
+	types := typesOf(got)
+	assert.Equal(t, firstPollType, types[0])
+	assert.True(t, failingSeen, "expected new-failing-checks")
+	assert.True(t, greenSeen, "expected ci-all-green")
+	assert.True(t, commitSeen, "expected new-commit")
+}
+
+func TestOnceRef_EmitsCurrentActionable(t *testing.T) {
+	ref := mkRefCommit("abc1234", []string{"build"})
+	svc := &Service{API: scriptedRefAPI([]*RefTarget{ref})}
+
+	opts := testRunOptions()
+	opts.Identity = resolver.Identity{Owner: "o", Repo: "r", Ref: "main", Target: "ref", Host: "github.com"}
+
+	var got []Notification
+	err := Once(context.Background(), svc, opts, func(n Notification) { got = append(got, n) })
+	require.NoError(t, err)
+
+	types := typesOf(got)
+	assert.Equal(t, firstPollType, types[0])
+	assert.Contains(t, types, string(EventNewFailingChecks))
+	assert.Contains(t, types, string(EventNewCommit))
+}
+
+// ---------------------------------------------------------------------------
+// Run / Once with issue target
+// ---------------------------------------------------------------------------
+
+func mkIssue(state string, comments []IssueComment) *IssueNode {
+	return &IssueNode{State: state, Comments: IssueCommentNodes{Nodes: comments}}
+}
+
+func scriptedIssueAPI(responses []*IssueNode) *fakeAPI {
+	call := 0
+	return &fakeAPI{graphqlFunc: func(query string, variables map[string]interface{}, result interface{}) error {
+		idx := call
+		if idx >= len(responses) {
+			idx = len(responses) - 1
+		}
+		call++
+		return assign(result, IssueQueryResponse{Repository: struct {
+			Issue *IssueNode `json:"issue"`
+		}{Issue: responses[idx]}})
+	}}
+}
+
+func TestRunIssue_StreamsEvents(t *testing.T) {
+	api := scriptedIssueAPI([]*IssueNode{
+		mkIssue("OPEN", nil), // baseline
+		mkIssue("OPEN", []IssueComment{mkIssueComment("c1", "alice", "hello", false)}), // new comment
+		mkIssue("CLOSED", nil), // closed
+	})
+	svc := &Service{API: api}
+
+	opts := testRunOptions()
+	opts.Identity = resolver.Identity{Owner: "o", Repo: "r", Number: 42, Target: "issue", Host: "github.com"}
+
+	var got []Notification
+	err := Run(context.Background(), svc, opts, func(n Notification) { got = append(got, n) })
+	require.NoError(t, err)
+
+	types := typesOf(got)
+	assert.Equal(t, firstPollType, types[0])
+	assert.Contains(t, types, string(EventIssueNewComment))
+	assert.Contains(t, types, string(EventIssueClosed))
+}
+
+func TestRunIssue_AlreadyClosedAtStartup(t *testing.T) {
+	api := scriptedIssueAPI([]*IssueNode{mkIssue("CLOSED", nil)})
+	svc := &Service{API: api}
+
+	opts := testRunOptions()
+	opts.Identity = resolver.Identity{Owner: "o", Repo: "r", Number: 42, Target: "issue", Host: "github.com"}
+
+	var got []Notification
+	err := Run(context.Background(), svc, opts, func(n Notification) { got = append(got, n) })
+	require.NoError(t, err)
+	assert.Equal(t, []string{firstPollType, string(EventIssueClosed)}, typesOf(got))
+}
+
+func TestOnceIssue_EmitsCurrentActionable(t *testing.T) {
+	issue := &IssueNode{
+		State: "OPEN",
+		Comments: IssueCommentNodes{Nodes: []IssueComment{
+			mkIssueComment("c1", "alice", "please fix", false),
+		}},
+	}
+	api := scriptedIssueAPI([]*IssueNode{issue})
+	svc := &Service{API: api}
+
+	opts := testRunOptions()
+	opts.Identity = resolver.Identity{Owner: "o", Repo: "r", Number: 42, Target: "issue", Host: "github.com"}
+
+	var got []Notification
+	err := Once(context.Background(), svc, opts, func(n Notification) { got = append(got, n) })
+	require.NoError(t, err)
+
+	types := typesOf(got)
+	assert.Equal(t, firstPollType, types[0])
+	assert.Contains(t, types, string(EventIssueNewComment))
 }

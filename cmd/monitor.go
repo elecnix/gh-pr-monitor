@@ -54,6 +54,9 @@ exponentially (capped at 5 minutes) and resets on any change.`,
 func addMonitorFlags(cmd *cobra.Command, opts *monitorOptions) {
 	cmd.Flags().StringVarP(&opts.Repo, "repo", "R", "", "Repository in 'owner/repo' format")
 	cmd.Flags().IntVar(&opts.Pull, "pr", 0, "Pull request number")
+	cmd.Flags().StringVar(&opts.Ref, "ref", "", "Branch or ref to monitor (CI checks only)")
+	cmd.Flags().StringVar(&opts.Commit, "commit", "", "Commit SHA to monitor (CI checks only)")
+	cmd.Flags().IntVar(&opts.Issue, "issue", 0, "Issue number to monitor")
 	cmd.Flags().IntVarP(&opts.Interval, "interval", "i", 60, "Polling interval in seconds (min 10)")
 	cmd.Flags().IntVarP(&opts.Timeout, "timeout", "t", 0, "Maximum watch time in seconds (0 = run until merged/closed)")
 	cmd.Flags().StringVar(&opts.IgnoredBots, "ignored-bots", "", "Comma-separated author logins whose general comments are ignored")
@@ -64,6 +67,9 @@ func addMonitorFlags(cmd *cobra.Command, opts *monitorOptions) {
 type monitorOptions struct {
 	Repo        string
 	Pull        int
+	Ref         string
+	Commit      string
+	Issue       int
 	Selector    string
 	Interval    int
 	Timeout     int
@@ -79,9 +85,28 @@ func (o *monitorOptions) Validate() error {
 	if o.Timeout < 0 {
 		return errors.New("--timeout must be a non-negative integer")
 	}
-	if o.Selector == "" && o.Pull == 0 {
+
+	// Count how many target kinds are specified.
+	targets := 0
+	if o.Selector != "" || o.Pull > 0 {
+		targets++
+	}
+	if o.Ref != "" {
+		targets++
+	}
+	if o.Commit != "" {
+		targets++
+	}
+	if o.Issue > 0 {
+		targets++
+	}
+	if targets > 1 {
+		return errors.New("--ref, --commit, --issue, and a PR selector are mutually exclusive")
+	}
+	if targets == 0 {
 		return errors.New("pull request number or URL is required")
 	}
+
 	return nil
 }
 
@@ -91,14 +116,24 @@ func runMonitor(cmd *cobra.Command, opts *monitorOptions) error {
 	}
 
 	inferRepo(&opts.Repo)
-	inferPR(opts.Selector, &opts.Pull)
 
-	selector, err := resolver.NormalizeSelector(opts.Selector, opts.Pull)
-	if err != nil {
-		return err
+	var identity resolver.Identity
+	var err error
+
+	if opts.Ref != "" {
+		identity, err = resolver.ResolveRef(opts.Ref, opts.Repo, os.Getenv("GH_HOST"))
+	} else if opts.Commit != "" {
+		identity, err = resolver.ResolveCommit(opts.Commit, opts.Repo, os.Getenv("GH_HOST"))
+	} else if opts.Issue > 0 {
+		identity, err = resolver.ResolveIssue(opts.Issue, opts.Repo, os.Getenv("GH_HOST"))
+	} else {
+		inferPR(opts.Selector, &opts.Pull)
+		selector, normErr := resolver.NormalizeSelector(opts.Selector, opts.Pull)
+		if normErr != nil {
+			return normErr
+		}
+		identity, err = resolver.Resolve(selector, opts.Repo, os.Getenv("GH_HOST"))
 	}
-
-	identity, err := resolver.Resolve(selector, opts.Repo, os.Getenv("GH_HOST"))
 	if err != nil {
 		return err
 	}

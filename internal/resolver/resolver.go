@@ -14,12 +14,16 @@ var (
 	pullURLRE = regexp.MustCompile(`^/([^/]+)/([^/]+)/pull/([0-9]+)(?:/.*)?$`)
 )
 
-// Identity represents a fully-resolved pull request reference.
+// Identity represents a fully-resolved reference target.
+// Target is one of: "pr", "ref", "commit", "issue".
 type Identity struct {
-	Owner  string
-	Repo   string
-	Host   string
-	Number int
+	Owner     string
+	Repo      string
+	Host      string
+	Number    int    // PR number or issue number
+	Target    string // "pr" | "ref" | "commit" | "issue"
+	Ref       string // branch ref for "ref" target
+	CommitSHA string // commit SHA for "commit" target
 }
 
 // NormalizeSelector ensures that either an explicit selector or --pr flag is present and mutually consistent.
@@ -61,6 +65,7 @@ func Resolve(selector, repoFlag, host string) (Identity, error) {
 	}
 
 	if id, err := parsePullURL(selector); err == nil {
+		id.Target = "pr"
 		return id, nil
 	}
 
@@ -69,10 +74,48 @@ func Resolve(selector, repoFlag, host string) (Identity, error) {
 		if err != nil {
 			return Identity{}, fmt.Errorf("--repo: %w", err)
 		}
-		return Identity{Owner: owner, Repo: repo, Host: host, Number: n}, nil
+		return Identity{Owner: owner, Repo: repo, Host: host, Number: n, Target: "pr"}, nil
 	}
 
 	return Identity{}, fmt.Errorf("invalid pull request selector: %q", selector)
+}
+
+// ResolveRef resolves a ref (branch) target for monitoring.
+func ResolveRef(ref, repoFlag, host string) (Identity, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return Identity{}, errors.New("ref must be non-empty")
+	}
+	owner, repo, err := splitRepo(repoFlag)
+	if err != nil {
+		return Identity{}, fmt.Errorf("--repo: %w", err)
+	}
+	return Identity{Owner: owner, Repo: repo, Host: SanitizeHost(host), Ref: ref, Target: "ref"}, nil
+}
+
+// ResolveCommit resolves a commit SHA target for monitoring.
+func ResolveCommit(sha, repoFlag, host string) (Identity, error) {
+	sha = strings.TrimSpace(sha)
+	if sha == "" {
+		return Identity{}, errors.New("commit SHA must be non-empty")
+	}
+	owner, repo, err := splitRepo(repoFlag)
+	if err != nil {
+		return Identity{}, fmt.Errorf("--repo: %w", err)
+	}
+	return Identity{Owner: owner, Repo: repo, Host: SanitizeHost(host), CommitSHA: sha, Target: "commit"}, nil
+}
+
+// ResolveIssue resolves an issue target for monitoring.
+func ResolveIssue(number int, repoFlag, host string) (Identity, error) {
+	if number <= 0 {
+		return Identity{}, errors.New("issue number must be positive")
+	}
+	owner, repo, err := splitRepo(repoFlag)
+	if err != nil {
+		return Identity{}, fmt.Errorf("--repo: %w", err)
+	}
+	return Identity{Owner: owner, Repo: repo, Host: SanitizeHost(host), Number: number, Target: "issue"}, nil
 }
 
 func parsePullURL(raw string) (Identity, error) {
