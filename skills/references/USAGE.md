@@ -263,36 +263,3 @@ gh pr-monitor react PRRC_... --type thumbs_up
   "status": "added"
 }
 ```
-
-## await
-
-- **Purpose:** Poll a pull request until it needs attention (comments, conflicts, or CI failures).
-- **Inputs:**
-  - Optional pull request selector argument.
-  - `--repo` / `--pr` flags when not using the selector shorthand.
-  - `--mode`: Watch mode - `all`, `comments`, `conflicts`, or `actions` (default: `all`).
-  - `--timeout`: Maximum polling time in seconds (default: 86400 = 1 day).
-  - `--interval`: Polling interval in seconds (default: 300 = 5 minutes).
-  - `--debounce`: Debounce duration in seconds (default: 30).
-  - `--check-only`: Check once and exit without polling.
-- **Exit codes:**
-  - `0` - Work detected (PR needs attention)
-  - `1` - Error occurred
-  - `2` - Timed out with no work detected
-- **Output schema:** Result object with conditions, unresolved count, conflicts, and CI status.
-
-```sh
-gh pr-monitor await --check-only -R owner/repo 42
-
-{
-  "conditions": ["new_comments"],
-  "unresolved": 3,
-  "general": 1,
-  "conflicts": false,
-  "failing": ["ci-check-1"],
-  "pending": ["ci-check-2"],
-  "timed_out": false,
-  "cancelled": false,
-  "watched_ms": 0
-}
-```

@@ -5,8 +5,8 @@
 //
 // The logic is ported from the pi-ghpr-monitor TypeScript extension
 // (analyzer.ts): the 👍-acknowledgement filtering, co-author trailer parsing,
-// and "is this thread new" dedup all mirror that implementation. It also
-// duplicates the small failing/pending check classifiers from internal/await
+// and "is this thread new" dedup all mirror that implementation. It duplicates
+// the failing/pending check classifiers
 // (they are unexported there) so this package stays self-contained.
 package monitor
 

@@ -23,7 +23,6 @@ GitHub's built-in `gh` tool does not show inline comments, review threads, or th
 - Export structured JSON for LLMs and automation
 - Manage pull request draft status (mark as draft/ready for review)
 - List all draft pull requests in a repository
-- Poll a PR until it needs attention (`await`)
 - Continuously monitor a PR and stream one event per change (`monitor`) — designed to be wrapped by [Claude Code](https://claude.com/claude-code)'s persistent `Monitor` tool for live, agent-driven PR notifications
 
 ## Installation
@@ -43,25 +42,24 @@ npx skills add elecnix/gh-pr-monitor
 
 ## Commands
 
-| Command                         | Description                                                           |
-| ------------------------------- | --------------------------------------------------------------------- |
-| `await`                         | Poll a PR until it needs attention (comments, conflicts, CI failures) |
-| `monitor`                       | Continuously watch a PR, streaming one event per change (NDJSON)      |
-| `draft status`                  | Check if a pull request is a draft                                    |
-| `draft mark`                    | Mark a pull request as draft                                          |
-| `draft ready`                   | Mark a pull request as ready for review                               |
-| `draft list`                    | List all draft pull requests in the repository                        |
-| `review --start`                | Opens a pending review                                                |
-| `review --add-comment`          | Adds inline comment (requires `PRR_…` review node ID)                 |
-| `review --edit-comment`         | Updates a comment in a pending review                                 |
-| `review --delete-comment`       | Deletes a comment from a pending review                               |
-| `review view`                   | Aggregates reviews, inline comments, and replies                      |
-| `review --submit`               | Finalizes a pending review                                            |
-| `comments reply`                | Replies to a review thread                                            |
-| `react`                         | Adds a reaction to any GitHub node (comments, reviews, etc.)          |
-| `threads list`                  | Lists review threads for the pull request                             |
-| `threads view`                  | View full conversation for specific threads by ID                     |
-| `threads resolve` / `unresolve` | Resolves or unresolves review threads                                 |
+| Command                         | Description                                                      |
+| ------------------------------- | ---------------------------------------------------------------- |
+| `monitor`                       | Continuously watch a PR, streaming one event per change (NDJSON) |
+| `draft status`                  | Check if a pull request is a draft                               |
+| `draft mark`                    | Mark a pull request as draft                                     |
+| `draft ready`                   | Mark a pull request as ready for review                          |
+| `draft list`                    | List all draft pull requests in the repository                   |
+| `review --start`                | Opens a pending review                                           |
+| `review --add-comment`          | Adds inline comment (requires `PRR_…` review node ID)            |
+| `review --edit-comment`         | Updates a comment in a pending review                            |
+| `review --delete-comment`       | Deletes a comment from a pending review                          |
+| `review view`                   | Aggregates reviews, inline comments, and replies                 |
+| `review --submit`               | Finalizes a pending review                                       |
+| `comments reply`                | Replies to a review thread                                       |
+| `react`                         | Adds a reaction to any GitHub node (comments, reviews, etc.)     |
+| `threads list`                  | Lists review threads for the pull request                        |
+| `threads view`                  | View full conversation for specific threads by ID                |
+| `threads resolve` / `unresolve` | Resolves or unresolves review threads                            |
 
 ### Filters
 
@@ -168,38 +166,9 @@ gh pr-monitor review --delete-comment --comment-id <comment_id>
 
 This only works on comments in pending reviews. Once a review is submitted, comments cannot be deleted.
 
-### Awaiting PR Updates
-
-Poll a pull request until it needs attention (new comments, merge conflicts, or CI failures):
-
-```sh
-# Check once and exit
-gh pr-monitor await --check-only -R owner/repo 42
-
-# Poll until work detected (default: 1 day timeout, 5 minute interval)
-gh pr-monitor await -R owner/repo 42
-
-# Poll for comments only with custom timeout
-gh pr-monitor await --mode comments --timeout 3600 -R owner/repo 42
-```
-
-Exit codes:
-
-- `0` - Work detected (PR needs attention)
-- `1` - Error occurred
-- `2` - Timed out with no work detected
-
-**Await flags:**
-
-- `--mode <all|comments|conflicts|actions>` - Watch mode (default: all)
-- `--timeout <seconds>` - Maximum polling time (default: 86400 = 1 day)
-- `--interval <seconds>` - Polling interval (default: 300 = 5 minutes)
-- `--debounce <seconds>` - Debounce duration (default: 30)
-- `--check-only` - Check once and exit without polling
-
 ### Monitoring a PR (streaming)
 
-Where `await` returns once when a PR needs attention, `monitor` runs continuously and emits **one event per genuinely-new change** — new review threads, general comments, failing/green CI, merge conflicts, review decisions, new commits, and merge/close. Each event is one NDJSON line on stdout, so a persistent watcher can surface each line as it arrives. The loop auto-stops when the PR is merged or closed, and idle polling backs off exponentially (capped at 5 minutes).
+`monitor` runs continuously and emits **one event per genuinely-new change** — new review threads, general comments, failing/green CI, merge conflicts, review decisions, new commits, and merge/close. Each event is one NDJSON line on stdout, so a persistent watcher can surface each line as it arrives. The loop auto-stops when the PR is merged or closed, and idle polling backs off exponentially (capped at 5 minutes).
 
 ```sh
 # Stream events until the PR is merged/closed (NDJSON, one event per line)
