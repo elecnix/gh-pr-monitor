@@ -44,7 +44,8 @@ npx skills add elecnix/gh-pr-monitor
 
 | Command                         | Description                                                      |
 | ------------------------------- | ---------------------------------------------------------------- |
-| `monitor`                       | Continuously watch a PR, streaming one event per change (NDJSON) |
+| _(default)_                     | Continuously watch a PR, streaming one event per change (NDJSON) |
+| `monitor` / `watch`             | Continuously watch a PR, streaming one event per change (NDJSON) |
 | `draft status`                  | Check if a pull request is a draft                               |
 | `draft mark`                    | Mark a pull request as draft                                     |
 | `draft ready`                   | Mark a pull request as ready for review                          |
@@ -168,11 +169,14 @@ This only works on comments in pending reviews. Once a review is submitted, comm
 
 ### Monitoring a PR (streaming)
 
+The default command — invoked as `gh pr-monitor <selector> [flags]` without a subcommand — watches a PR continuously. The `monitor` and `watch` subcommands are also available as explicit forms.
+
 `monitor` runs continuously and emits **one event per genuinely-new change** — new review threads, general comments, failing/green CI, merge conflicts, review decisions, new commits, and merge/close. Each event is one NDJSON line on stdout, so a persistent watcher can surface each line as it arrives. The loop auto-stops when the PR is merged or closed, and idle polling backs off exponentially (capped at 5 minutes).
 
 ```sh
-# Stream events until the PR is merged/closed (NDJSON, one event per line)
-gh pr-monitor monitor -R owner/repo 42
+# Default: stream events until the PR is merged/closed (NDJSON, one event per line)
+gh pr-monitor -R owner/repo 42                    # or: gh pr-monitor monitor 42 -R owner/repo
+gh pr-monitor watch -R owner/repo 42              # alias for 'monitor'
 
 # Human-readable rendered messages instead of JSON
 gh pr-monitor monitor --text -R owner/repo 42
@@ -207,7 +211,7 @@ Claude then registers a persistent monitor whose command is this tool:
 
 ```
 Monitor({
-  command: "gh pr-monitor monitor -R owner/repo 42",
+  command: "gh pr-monitor -R owner/repo 42",
   persistent: true,
   description: "PR owner/repo#42 events",
 })
