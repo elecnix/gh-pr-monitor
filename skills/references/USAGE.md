@@ -263,4 +263,3 @@ gh pr-monitor react PRRC_... --type thumbs_up
   "status": "added"
 }
 ```
-```
