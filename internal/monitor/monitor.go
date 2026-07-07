@@ -65,7 +65,7 @@ const MONITOR_QUERY = `query MonitorPR($owner: String!, $repo: String!, $number:
           }
         }
       }
-      reviews(last: 1) {
+      reviews(last: 100) {
         nodes { state author { login } submittedAt }
       }
       commits(last: 1) {
@@ -682,12 +682,20 @@ func pendingChecks(pr *PullRequest) []string {
 	return out
 }
 
-// reviewDecision returns the state and author of the latest non-PENDING review.
-// Returns empty strings when there are no reviews or all are PENDING.
+// nonDecisiveReviewStates are review states that do not constitute a review
+// decision: PENDING (not yet submitted) and COMMENTED (comments only, neither
+// approval nor a change request). Skipping them ensures a follow-up comment
+// review does not clobber or misattribute an earlier APPROVED / CHANGES_REQUESTED
+// decision.
+var nonDecisiveReviewStates = map[string]bool{"PENDING": true, "COMMENTED": true}
+
+// reviewDecision returns the state and author of the latest decisive review —
+// the most recent review whose state is neither PENDING nor COMMENTED. Returns
+// empty strings when there are no reviews or none are decisive.
 func reviewDecision(pr *PullRequest) (state, author string) {
 	nodes := pr.Reviews.Nodes
 	for i := len(nodes) - 1; i >= 0; i-- {
-		if nodes[i].State != "PENDING" {
+		if !nonDecisiveReviewStates[nodes[i].State] {
 			return nodes[i].State, nodes[i].Author.Login
 		}
 	}
