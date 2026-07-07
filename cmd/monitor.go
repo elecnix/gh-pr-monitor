@@ -21,7 +21,7 @@ func newMonitorCommand() *cobra.Command {
 	opts := &monitorOptions{}
 
 	cmd := &cobra.Command{
-		Use:     "monitor <number> | <url>",
+		Use:     "monitor <number> | <url> | --ref <ref> | --commit <sha> | --issue <number>",
 		Aliases: []string{"watch"},
 		Short:   "Continuously watch a pull request and stream events as they happen",
 		Long: `Continuously watch a pull request, emitting one event per genuinely-new
