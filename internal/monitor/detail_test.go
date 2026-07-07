@@ -92,7 +92,7 @@ func TestRenderNotification_ThreadDetail(t *testing.T) {
 		CommentIDs: []string{"C1"},
 		DiffHunk:   "@@ -10,4 +10,4 @@\n line10\n line11\n-old\n+new12\n line13",
 	}}}
-	n := renderNotification(opts, &PRStatus{}, string(EventNewUnresolvedThreads), ev)
+	n := renderNotificationPR(opts, &PRStatus{}, string(EventNewUnresolvedThreads), ev)
 	assert.Contains(t, n.Detail, "main.go:12")
 	assert.Contains(t, n.Detail, "(by alice)")
 	assert.Contains(t, n.Detail, "please rename this")
@@ -107,7 +107,7 @@ func TestRenderNotification_CommentDetail(t *testing.T) {
 		{ID: "G1", Author: "bob", Body: "can you add a test?"},
 		{ID: "G2", Author: "carol", Body: "second thought"},
 	}}
-	n := renderNotification(opts, &PRStatus{}, string(EventNewGeneralComments), ev)
+	n := renderNotificationPR(opts, &PRStatus{}, string(EventNewGeneralComments), ev)
 	assert.Contains(t, n.Detail, "bob: can you add a test?")
 	assert.Contains(t, n.Detail, "carol: second thought")
 	assert.Contains(t, n.Detail, "react G1 --type thumbs_up")

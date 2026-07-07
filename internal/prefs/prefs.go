@@ -51,6 +51,10 @@ var defaultTemplates = map[string]string{
 	"closed":                   "❌ PR {prLabel} was closed. Monitoring stopped.",
 	"first-poll":               "📡 Monitoring {owner}/{repo}#{number} (polling every {intervalSec}s)",
 	"all-clear":                "✨ {prLabel} — open, all clear",
+	"issue-closed":             "❌ Issue {prLabel} was closed. Monitoring stopped.",
+	"issue-reopened":           "🔄 Issue {prLabel} was reopened.",
+	"issue-new-comment":        "💭 New comment on issue {prLabel}",
+	"issue-mention":            "👋 You were mentioned on issue {prLabel}",
 }
 
 // DefaultPreferences returns a fresh copy of the built-in defaults.
@@ -87,6 +91,9 @@ var recognizedTokens = map[string]bool{
 	"commitAuthor":          true,
 	"commitCoauthors":       true,
 	"commitMessageHeadline": true,
+	"issueState":            true,
+	"issueTitle":            true,
+	"issueComments":         true,
 }
 
 // tokenRE matches a single {token} placeholder. The token name is captured.

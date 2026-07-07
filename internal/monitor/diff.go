@@ -15,6 +15,12 @@ const (
 	EventNewCommit              EventType = "new-commit"
 	EventMerged                 EventType = "merged"
 	EventClosed                 EventType = "closed"
+
+	// Issue monitoring events
+	EventIssueClosed     EventType = "issue-closed"
+	EventIssueReopened   EventType = "issue-reopened"
+	EventIssueNewComment EventType = "issue-new-comment"
+	EventIssueMention    EventType = "issue-mention"
 )
 
 // Event describes a single genuinely-new change between two snapshots. Only the
@@ -38,6 +44,9 @@ type Event struct {
 
 	// Commit is the new head commit (EventNewCommit).
 	Commit *CommitSummary `json:"commit,omitempty"`
+
+	// IssueComments holds the new issue comments (EventIssueNewComment, EventIssueMention).
+	IssueComments []IssueCommentSummary `json:"issue_comments,omitempty"`
 }
 
 // Diff returns the genuinely-new changes between prev and curr.
@@ -202,4 +211,84 @@ func isThreadNew(thread ThreadSummary, prevIDs map[string]bool, prevCommentIDs m
 		}
 	}
 	return false
+}
+
+// ---------------------------------------------------------------------------
+// DiffRef — diff two RefStatus snapshots (CI-only monitoring)
+// ---------------------------------------------------------------------------
+
+// DiffRef returns genuinely-new CI events between two ref snapshots.
+// First-poll (prev == nil) is silent.
+func DiffRef(prev *RefStatus, curr *RefStatus) []Event {
+	if prev == nil || curr == nil {
+		return nil
+	}
+
+	var events []Event
+
+	// New failing checks.
+	if newFailing := diffNewStrings(prev.FailingChecks, curr.FailingChecks); len(newFailing) > 0 {
+		events = append(events, Event{Type: EventNewFailingChecks, Checks: newFailing})
+	}
+
+	// CI all green.
+	prevHadWork := len(prev.FailingChecks) > 0 || len(prev.PendingChecks) > 0
+	currClean := len(curr.FailingChecks) == 0 && len(curr.PendingChecks) == 0
+	if prevHadWork && currClean {
+		events = append(events, Event{Type: EventCIAllGreen})
+	}
+
+	// New commit (OID changed).
+	if curr.Oid != "" && curr.Oid != prev.Oid {
+		commit := CommitSummary{
+			Oid:             curr.Oid,
+			ShortOid:        curr.ShortOid,
+			Author:          curr.Author,
+			MessageHeadline: curr.MessageHeadline,
+		}
+		events = append(events, Event{Type: EventNewCommit, Commit: &commit})
+	}
+
+	return events
+}
+
+// ---------------------------------------------------------------------------
+// DiffIssues — diff two IssueStatus snapshots
+// ---------------------------------------------------------------------------
+
+// DiffIssues returns genuinely-new issue events between two snapshots.
+// First-poll (prev == nil) is silent.
+func DiffIssues(prev *IssueStatus, curr *IssueStatus) []Event {
+	if prev == nil || curr == nil {
+		return nil
+	}
+
+	var events []Event
+
+	// State transitions.
+	if curr.State != prev.State {
+		switch {
+		case curr.State == "CLOSED" && prev.State == "OPEN":
+			events = append(events, Event{Type: EventIssueClosed})
+		case curr.State == "OPEN" && prev.State == "CLOSED":
+			events = append(events, Event{Type: EventIssueReopened})
+		}
+	}
+
+	// New comments (by ID, same pattern as PR comments).
+	prevIDs := make(map[string]bool, len(prev.Comments))
+	for _, c := range prev.Comments {
+		prevIDs[c.ID] = true
+	}
+	var newComments []IssueCommentSummary
+	for _, c := range curr.Comments {
+		if !prevIDs[c.ID] {
+			newComments = append(newComments, c)
+		}
+	}
+	if len(newComments) > 0 {
+		events = append(events, Event{Type: EventIssueNewComment, IssueComments: newComments})
+	}
+
+	return events
 }

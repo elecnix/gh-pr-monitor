@@ -287,3 +287,48 @@ func TestDiff_MultipleEventsInOnePass(t *testing.T) {
 	assert.Contains(t, types, EventNewGeneralComments)
 	assert.Contains(t, types, EventNewCommit)
 }
+
+// ---------------------------------------------------------------------------
+// DiffRef tests
+// ---------------------------------------------------------------------------
+
+func TestDiffRef_FirstPollBaselineSilent(t *testing.T) {
+	curr := &RefStatus{
+		Oid:           "abc",
+		FailingChecks: []string{"CI"},
+		PendingChecks: []string{"Deploy"},
+	}
+	assert.Empty(t, DiffRef(nil, curr))
+}
+
+func TestDiffRef_NewFailingChecks(t *testing.T) {
+	prev := &RefStatus{FailingChecks: []string{"CI"}}
+	curr := &RefStatus{FailingChecks: []string{"CI", "lint"}}
+	e := findEvent(DiffRef(prev, curr), EventNewFailingChecks)
+	require.NotNil(t, e)
+	assert.Equal(t, []string{"lint"}, e.Checks)
+}
+
+func TestDiffRef_CIAllGreen(t *testing.T) {
+	prev := &RefStatus{FailingChecks: []string{"CI"}}
+	curr := &RefStatus{}
+	assert.NotNil(t, findEvent(DiffRef(prev, curr), EventCIAllGreen))
+}
+
+func TestDiffRef_NewCommit(t *testing.T) {
+	prev := &RefStatus{Oid: "aaa111"}
+	curr := &RefStatus{Oid: "bbb222", ShortOid: "bbb222", Author: "grace", MessageHeadline: "fix"}
+	e := findEvent(DiffRef(prev, curr), EventNewCommit)
+	require.NotNil(t, e)
+	require.NotNil(t, e.Commit)
+	assert.Equal(t, "bbb222", e.Commit.Oid)
+	assert.Equal(t, "grace", e.Commit.Author)
+}
+
+func TestDiffRef_MultipleEvents(t *testing.T) {
+	prev := &RefStatus{FailingChecks: []string{"CI"}, Oid: "old"}
+	curr := &RefStatus{FailingChecks: []string{"CI", "lint"}, Oid: "new", ShortOid: "new", Author: "a"}
+	types := eventTypes(DiffRef(prev, curr))
+	assert.Contains(t, types, EventNewFailingChecks)
+	assert.Contains(t, types, EventNewCommit)
+}

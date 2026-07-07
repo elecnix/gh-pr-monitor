@@ -96,16 +96,39 @@ func realSleep(ctx context.Context, d time.Duration) error {
 	}
 }
 
-// Run polls the PR until it is merged/closed, the context is cancelled, or the
-// timeout elapses, emitting one Notification per genuinely-new change.
-//
-// The first poll emits an informational first-poll notification and establishes
-// a silent baseline (no historical spam). Subsequent polls diff against the
-// prior snapshot. After 3 consecutive no-change polls the interval grows
-// exponentially (capped at 5 minutes) and resets to the base interval on any
-// change. Transient fetch errors are logged to stderr and retried with a
-// separate doubling backoff rather than crashing the loop.
+// Run polls the target until it reaches a terminal state, the context is
+// cancelled, or the timeout elapses, emitting one Notification per
+// genuinely-new change. Dispatches based on the target type in opts.Identity.
 func Run(ctx context.Context, svc *Service, opts RunOptions, emit func(Notification)) error {
+	switch opts.Identity.Target {
+	case "ref", "commit":
+		return runRef(ctx, svc, opts, emit)
+	case "issue":
+		return runIssue(ctx, svc, opts, emit)
+	default:
+		return runPR(ctx, svc, opts, emit)
+	}
+}
+
+// Once does a single fetch and emits the current actionable state.
+func Once(ctx context.Context, svc *Service, opts RunOptions, emit func(Notification)) error {
+	switch opts.Identity.Target {
+	case "ref", "commit":
+		return onceRef(ctx, svc, opts, emit)
+	case "issue":
+		return onceIssue(ctx, svc, opts, emit)
+	default:
+		return oncePR(ctx, svc, opts, emit)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// PR target
+// ---------------------------------------------------------------------------
+
+// runPR polls the PR until it is merged/closed, the context is cancelled, or
+// the timeout elapses.
+func runPR(ctx context.Context, svc *Service, opts RunOptions, emit func(Notification)) error {
 	base := opts.Interval
 	if base <= 0 {
 		base = defaultInterval
@@ -116,10 +139,6 @@ func Run(ctx context.Context, svc *Service, opts RunOptions, emit func(Notificat
 		deadline = opts.now().Add(opts.Timeout)
 	}
 
-	// diff selects the per-poll change detector. With RetriggerComments the loop
-	// re-emits every open thread/comment on each poll (via DiffRetrigger); since
-	// an open item keeps changes flowing, noChange rarely accrues and the idle
-	// backoff is effectively disabled — pair it with a longer --interval.
 	diff := Diff
 	if opts.Prefs.RetriggerComments {
 		diff = DiffRetrigger
@@ -150,11 +169,11 @@ func Run(ctx context.Context, svc *Service, opts RunOptions, emit func(Notificat
 		firstPoll := prev == nil
 		terminalEmitted := false
 		if firstPoll {
-			emit(renderNotification(opts, curr, firstPollType, Event{}))
+			emit(renderNotificationPR(opts, curr, firstPollType, Event{}))
 		} else {
 			events := diff(prev, curr)
 			for _, ev := range events {
-				emit(renderNotification(opts, curr, string(ev.Type), ev))
+				emit(renderNotificationPR(opts, curr, string(ev.Type), ev))
 				if ev.Type == EventMerged || ev.Type == EventClosed {
 					terminalEmitted = true
 				}
@@ -167,16 +186,13 @@ func Run(ctx context.Context, svc *Service, opts RunOptions, emit func(Notificat
 		}
 		prev = curr
 
-		// Auto-stop when the PR reaches a terminal state. On a transition Diff
-		// already emitted the terminal event; if the PR was already terminal at
-		// startup, emit it now so a consumer always learns why the stream ends.
 		if curr.Merged || curr.State == "CLOSED" {
 			if firstPoll && !terminalEmitted {
 				typ := EventClosed
 				if curr.Merged {
 					typ = EventMerged
 				}
-				emit(renderNotification(opts, curr, string(typ), Event{Type: typ}))
+				emit(renderNotificationPR(opts, curr, string(typ), Event{Type: typ}))
 			}
 			return nil
 		}
@@ -197,22 +213,226 @@ func Run(ctx context.Context, svc *Service, opts RunOptions, emit func(Notificat
 	}
 }
 
-// Once does a single fetch and emits the current actionable state: an
-// informational first-poll notification followed by one notification per
-// currently-actionable item (diffing against an empty baseline). It never
-// blocks. Useful for inspection or a one-shot check.
-func Once(ctx context.Context, svc *Service, opts RunOptions, emit func(Notification)) error {
+func oncePR(ctx context.Context, svc *Service, opts RunOptions, emit func(Notification)) error {
 	resp, err := svc.Fetch(&opts.Identity, opts.Identity.Number)
 	if err != nil {
 		return err
 	}
 	curr := Snapshot(resp.Repository.PullRequest, SnapshotOptions{IgnoredBots: opts.Prefs.IgnoredBots})
-	emit(renderNotification(opts, curr, firstPollType, Event{}))
+	emit(renderNotificationPR(opts, curr, firstPollType, Event{}))
 	for _, ev := range Diff(&PRStatus{}, curr) {
-		emit(renderNotification(opts, curr, string(ev.Type), ev))
+		emit(renderNotificationPR(opts, curr, string(ev.Type), ev))
 	}
 	return nil
 }
+
+// ---------------------------------------------------------------------------
+// Ref / commit target
+// ---------------------------------------------------------------------------
+
+// runRef polls a ref or commit, emitting CI events until the context is
+// cancelled or timeout elapses. Ref targets never auto-stop (no terminal
+// state), so they run until cancelled or timed out.
+func runRef(ctx context.Context, svc *Service, opts RunOptions, emit func(Notification)) error {
+	base := opts.Interval
+	if base <= 0 {
+		base = defaultInterval
+	}
+
+	var deadline time.Time
+	if opts.Timeout > 0 {
+		deadline = opts.now().Add(opts.Timeout)
+	}
+
+	var prev *RefStatus
+	noChange := 0
+	errBackoff := time.Duration(0)
+
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		var curr *RefStatus
+		switch opts.Identity.Target {
+		case "commit":
+			resp, err := svc.FetchCommit(opts.Identity.Owner, opts.Identity.Repo, opts.Identity.CommitSHA)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "gh-pr-monitor: fetch error: %v\n", err)
+				errBackoff = nextErrBackoff(errBackoff, base)
+				if serr := opts.sleep(ctx, errBackoff); serr != nil {
+					return serr
+				}
+				continue
+			}
+			curr = SnapshotCommit(resp.Repository.Object)
+		default:
+			resp, err := svc.FetchRef(opts.Identity.Owner, opts.Identity.Repo, opts.Identity.Ref)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "gh-pr-monitor: fetch error: %v\n", err)
+				errBackoff = nextErrBackoff(errBackoff, base)
+				if serr := opts.sleep(ctx, errBackoff); serr != nil {
+					return serr
+				}
+				continue
+			}
+			curr = SnapshotRef(resp.Repository.Ref)
+		}
+		errBackoff = 0
+
+		firstPoll := prev == nil
+		if firstPoll {
+			emit(renderNotificationRef(opts, curr, firstPollType, Event{}))
+		} else {
+			events := DiffRef(prev, curr)
+			for _, ev := range events {
+				emit(renderNotificationRef(opts, curr, string(ev.Type), ev))
+			}
+			if len(events) == 0 {
+				noChange++
+			} else {
+				noChange = 0
+			}
+		}
+		prev = curr
+
+		d := idleInterval(base, noChange)
+		if !deadline.IsZero() {
+			remaining := deadline.Sub(opts.now())
+			if remaining <= 0 {
+				return nil
+			}
+			if d > remaining {
+				d = remaining
+			}
+		}
+		if err := opts.sleep(ctx, d); err != nil {
+			return err
+		}
+	}
+}
+
+func onceRef(ctx context.Context, svc *Service, opts RunOptions, emit func(Notification)) error {
+	var curr *RefStatus
+	switch opts.Identity.Target {
+	case "commit":
+		resp, err := svc.FetchCommit(opts.Identity.Owner, opts.Identity.Repo, opts.Identity.CommitSHA)
+		if err != nil {
+			return err
+		}
+		curr = SnapshotCommit(resp.Repository.Object)
+	default:
+		resp, err := svc.FetchRef(opts.Identity.Owner, opts.Identity.Repo, opts.Identity.Ref)
+		if err != nil {
+			return err
+		}
+		curr = SnapshotRef(resp.Repository.Ref)
+	}
+	emit(renderNotificationRef(opts, curr, firstPollType, Event{}))
+	for _, ev := range DiffRef(&RefStatus{}, curr) {
+		emit(renderNotificationRef(opts, curr, string(ev.Type), ev))
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Issue target
+// ---------------------------------------------------------------------------
+
+// runIssue polls an issue, emitting state-change and comment events. Auto-stops
+// when the issue is closed (but not reopened — a reopened issue continues).
+func runIssue(ctx context.Context, svc *Service, opts RunOptions, emit func(Notification)) error {
+	base := opts.Interval
+	if base <= 0 {
+		base = defaultInterval
+	}
+
+	var deadline time.Time
+	if opts.Timeout > 0 {
+		deadline = opts.now().Add(opts.Timeout)
+	}
+
+	var prev *IssueStatus
+	noChange := 0
+	errBackoff := time.Duration(0)
+
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		resp, err := svc.FetchIssue(opts.Identity.Owner, opts.Identity.Repo, opts.Identity.Number)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gh-pr-monitor: fetch error: %v\n", err)
+			errBackoff = nextErrBackoff(errBackoff, base)
+			if serr := opts.sleep(ctx, errBackoff); serr != nil {
+				return serr
+			}
+			continue
+		}
+		errBackoff = 0
+
+		curr := SnapshotIssue(resp.Repository.Issue, SnapshotOptions{IgnoredBots: opts.Prefs.IgnoredBots})
+
+		firstPoll := prev == nil
+		terminalEmitted := false
+		if firstPoll {
+			emit(renderNotificationIssue(opts, curr, firstPollType, Event{}))
+		} else {
+			events := DiffIssues(prev, curr)
+			for _, ev := range events {
+				emit(renderNotificationIssue(opts, curr, string(ev.Type), ev))
+				if ev.Type == EventIssueClosed {
+					terminalEmitted = true
+				}
+			}
+			if len(events) == 0 {
+				noChange++
+			} else {
+				noChange = 0
+			}
+		}
+		prev = curr
+
+		if curr.State == "CLOSED" {
+			if firstPoll && !terminalEmitted {
+				emit(renderNotificationIssue(opts, curr, string(EventIssueClosed), Event{Type: EventIssueClosed}))
+			}
+			return nil
+		}
+
+		d := idleInterval(base, noChange)
+		if !deadline.IsZero() {
+			remaining := deadline.Sub(opts.now())
+			if remaining <= 0 {
+				return nil
+			}
+			if d > remaining {
+				d = remaining
+			}
+		}
+		if err := opts.sleep(ctx, d); err != nil {
+			return err
+		}
+	}
+}
+
+func onceIssue(ctx context.Context, svc *Service, opts RunOptions, emit func(Notification)) error {
+	resp, err := svc.FetchIssue(opts.Identity.Owner, opts.Identity.Repo, opts.Identity.Number)
+	if err != nil {
+		return err
+	}
+	curr := SnapshotIssue(resp.Repository.Issue, SnapshotOptions{IgnoredBots: opts.Prefs.IgnoredBots})
+	emit(renderNotificationIssue(opts, curr, firstPollType, Event{}))
+	for _, ev := range DiffIssues(&IssueStatus{}, curr) {
+		emit(renderNotificationIssue(opts, curr, string(ev.Type), ev))
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
 
 // idleInterval returns the poll interval given the number of consecutive
 // no-change polls: base until 3 no-change polls, then base*2^(n-3) capped at
@@ -250,10 +470,14 @@ func nextErrBackoff(cur, base time.Duration) time.Duration {
 	return d
 }
 
-// renderNotification builds the interpolation vars, renders the template for
+// ---------------------------------------------------------------------------
+// PR notification rendering
+// ---------------------------------------------------------------------------
+
+// renderNotificationPR builds the interpolation vars, renders the template for
 // typ, and populates the structured fields relevant to the event.
-func renderNotification(opts RunOptions, status *PRStatus, typ string, ev Event) Notification {
-	vars := buildVars(opts.Identity, status, ev, opts.Interval)
+func renderNotificationPR(opts RunOptions, status *PRStatus, typ string, ev Event) Notification {
+	vars := buildVarsPR(opts.Identity, status, ev, opts.Interval)
 	n := Notification{
 		Type:      typ,
 		PRLabel:   vars["prLabel"],
@@ -288,9 +512,7 @@ func renderNotification(opts RunOptions, status *PRStatus, typ string, ev Event)
 	return n
 }
 
-// buildVars assembles the interpolation variables from the identity, snapshot,
-// and event. Event-specific fields override the snapshot-derived defaults.
-func buildVars(id resolver.Identity, status *PRStatus, ev Event, interval time.Duration) map[string]string {
+func buildVarsPR(id resolver.Identity, status *PRStatus, ev Event, interval time.Duration) map[string]string {
 	host := id.Host
 	if host == "" {
 		host = "github.com"
@@ -326,6 +548,142 @@ func buildVars(id resolver.Identity, status *PRStatus, ev Event, interval time.D
 
 	return vars
 }
+
+// ---------------------------------------------------------------------------
+// Ref notification rendering
+// ---------------------------------------------------------------------------
+
+func renderNotificationRef(opts RunOptions, status *RefStatus, typ string, ev Event) Notification {
+	vars := buildVarsRef(opts.Identity, status, ev, opts.Interval)
+	n := Notification{
+		Type:      typ,
+		PRLabel:   vars["prLabel"],
+		Message:   prefs.Interpolate(opts.Prefs.Templates[typ], vars),
+		Timestamp: opts.now(),
+	}
+	n.PRUrl = vars["prUrl"]
+	switch EventType(typ) {
+	case EventNewFailingChecks:
+		if len(ev.Checks) > 0 {
+			n.FailingChecks = ev.Checks
+		} else if status != nil {
+			n.FailingChecks = status.FailingChecks
+		}
+	case EventNewCommit:
+		if ev.Commit != nil {
+			n.CommitShortOid = ev.Commit.ShortOid
+			n.CommitAuthor = ev.Commit.Author
+			n.CommitUrl = vars["commitUrl"]
+		}
+	}
+	return n
+}
+
+func buildVarsRef(id resolver.Identity, status *RefStatus, ev Event, interval time.Duration) map[string]string {
+	host := id.Host
+	if host == "" {
+		host = "github.com"
+	}
+
+	label := fmt.Sprintf("%s/%s@%s", id.Owner, id.Repo, id.Ref)
+	refURL := fmt.Sprintf("https://%s/%s/%s/tree/%s", host, id.Owner, id.Repo, id.Ref)
+	if id.Target == "commit" {
+		label = fmt.Sprintf("%s/%s@%s", id.Owner, id.Repo, id.CommitSHA)
+		if len(id.CommitSHA) > 7 {
+			label = fmt.Sprintf("%s/%s@%s", id.Owner, id.Repo, id.CommitSHA[:7])
+		}
+		refURL = fmt.Sprintf("https://%s/%s/%s/commit/%s", host, id.Owner, id.Repo, id.CommitSHA)
+	}
+
+	vars := map[string]string{
+		"owner":       id.Owner,
+		"repo":        id.Repo,
+		"number":      "0", // ref targets don't have a number
+		"host":        host,
+		"prLabel":     label,
+		"prUrl":       refURL,
+		"intervalSec": strconv.Itoa(int(interval.Seconds())),
+	}
+
+	if status != nil {
+		vars["failingChecks"] = strings.Join(status.FailingChecks, ", ")
+		cs := CommitSummary{
+			Oid:             status.Oid,
+			ShortOid:        status.ShortOid,
+			Author:          status.Author,
+			MessageHeadline: status.MessageHeadline,
+		}
+		setCommitVars(vars, host, id, cs)
+	}
+
+	if ev.Type == EventNewFailingChecks && len(ev.Checks) > 0 {
+		vars["failingChecks"] = strings.Join(ev.Checks, ", ")
+	}
+	if ev.Commit != nil {
+		setCommitVars(vars, host, id, *ev.Commit)
+	}
+
+	return vars
+}
+
+// ---------------------------------------------------------------------------
+// Issue notification rendering
+// ---------------------------------------------------------------------------
+
+func renderNotificationIssue(opts RunOptions, status *IssueStatus, typ string, ev Event) Notification {
+	vars := buildVarsIssue(opts.Identity, status, ev, opts.Interval)
+	n := Notification{
+		Type:      typ,
+		PRLabel:   vars["prLabel"],
+		Message:   prefs.Interpolate(opts.Prefs.Templates[typ], vars),
+		Timestamp: opts.now(),
+	}
+	n.PRUrl = vars["prUrl"]
+	switch EventType(typ) {
+	case EventIssueNewComment, EventIssueMention:
+		if len(ev.IssueComments) > 0 {
+			n.Detail = issueCommentsDetail(ev.IssueComments)
+		}
+	}
+	return n
+}
+
+func buildVarsIssue(id resolver.Identity, status *IssueStatus, ev Event, interval time.Duration) map[string]string {
+	host := id.Host
+	if host == "" {
+		host = "github.com"
+	}
+	vars := map[string]string{
+		"owner":       id.Owner,
+		"repo":        id.Repo,
+		"number":      strconv.Itoa(id.Number),
+		"host":        host,
+		"prLabel":     fmt.Sprintf("%s/%s#%d", id.Owner, id.Repo, id.Number),
+		"prUrl":       fmt.Sprintf("https://%s/%s/%s/issues/%d", host, id.Owner, id.Repo, id.Number),
+		"intervalSec": strconv.Itoa(int(interval.Seconds())),
+	}
+
+	if status != nil {
+		vars["issueState"] = status.State
+		vars["issueTitle"] = status.Title
+		vars["issueComments"] = strconv.Itoa(len(status.Comments))
+	}
+
+	return vars
+}
+
+// issueCommentsDetail joins the per-comment details for issue comments.
+func issueCommentsDetail(comments []IssueCommentSummary) string {
+	parts := make([]string, 0, len(comments))
+	for _, c := range comments {
+		parts = append(parts, fmt.Sprintf("%s: %s", c.Author, c.Body))
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+// ---------------------------------------------------------------------------
+// Shared commit vars
+// ---------------------------------------------------------------------------
 
 func setCommitVars(vars map[string]string, host string, id resolver.Identity, c CommitSummary) {
 	vars["commitOid"] = c.Oid
