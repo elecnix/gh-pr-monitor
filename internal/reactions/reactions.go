@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/elecnix/gh-pr-monitor/internal/ghcli"
+	"github.com/elecnix/gh-monitor/internal/ghcli"
 )
 
 const addReactionMutation = `

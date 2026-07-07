@@ -138,17 +138,17 @@ func threadDetail(t ThreadSummary) string {
 		b.WriteString("\n")
 		b.WriteString(ex)
 	}
-	react := "React 👍 to acknowledge: gh pr-monitor react <comment-id> --type thumbs_up"
+	react := "React 👍 to acknowledge: gh monitor react <comment-id> --type thumbs_up"
 	if len(t.CommentIDs) > 0 {
-		react = fmt.Sprintf("React 👍 to acknowledge: gh pr-monitor react %s --type thumbs_up", t.CommentIDs[len(t.CommentIDs)-1])
+		react = fmt.Sprintf("React 👍 to acknowledge: gh monitor react %s --type thumbs_up", t.CommentIDs[len(t.CommentIDs)-1])
 	}
-	b.WriteString(fmt.Sprintf("\n  Reply then resolve: gh pr-monitor threads resolve --thread-id %s  |  %s", t.ID, react))
+	b.WriteString(fmt.Sprintf("\n  Reply then resolve: gh monitor threads resolve --thread-id %s  |  %s", t.ID, react))
 	return b.String()
 }
 
 // commentDetail renders an actionable body for one general comment.
 func commentDetail(c GeneralComment) string {
-	return fmt.Sprintf("%s: %s\n  React 👍 to acknowledge and stop notifications: gh pr-monitor react %s --type thumbs_up", c.Author, c.Body, c.ID)
+	return fmt.Sprintf("%s: %s\n  React 👍 to acknowledge and stop notifications: gh monitor react %s --type thumbs_up", c.Author, c.Body, c.ID)
 }
 
 // threadsDetail joins the per-thread details with a blank line between them.

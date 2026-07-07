@@ -5,6 +5,6 @@ bin/
 TASKS.md
 
 # Go binaries
-gh-pr-monitor
+gh-monitor
 *.exe
 .pi/

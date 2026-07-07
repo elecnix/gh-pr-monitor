@@ -17,7 +17,7 @@ Unless stated otherwise, commands emit JSON only. Optional fields are omitted in
 - **Output schema:** [`ReviewState`](SCHEMAS.md#reviewstate) — required fields `id` and `state`; optional `submitted_at`.
 
 ```sh
-gh pr-monitor review --start -R owner/repo 42
+gh monitor review --start -R owner/repo 42
 
 {
   "id": "PRR_...",
@@ -36,7 +36,7 @@ gh pr-monitor review --start -R owner/repo 42
 - **Output schema:** [`ReviewThread`](SCHEMAS.md#reviewthread) — required fields `id`, `path`, `is_outdated`; optional `line`.
 
 ```sh
-gh pr-monitor review --add-comment \
+gh monitor review --add-comment \
   --review-id PRR_... \
   --path internal/service.go \
   --line 42 \
@@ -60,7 +60,7 @@ gh pr-monitor review --add-comment \
 - **Output schema:** Status payload `{"status": "Comment updated successfully"}`.
 
 ```sh
-gh pr-monitor review --edit-comment \
+gh monitor review --edit-comment \
   --comment-id PRRC_... \
   --body "Updated: use helper function here" \
   -R owner/repo 42
@@ -80,7 +80,7 @@ gh pr-monitor review --edit-comment \
 - **Output schema:** Status payload `{"status": "Comment deleted successfully"}`.
 
 ```sh
-gh pr-monitor review --delete-comment \
+gh monitor review --delete-comment \
   --comment-id PRRC_... \
   -R owner/repo 42
 
@@ -102,7 +102,7 @@ gh pr-monitor review --delete-comment \
 - **Output shape:**
 
 ```sh
-gh pr-monitor review view --reviewer octocat --states CHANGES_REQUESTED -R owner/repo 42
+gh monitor review view --reviewer octocat --states CHANGES_REQUESTED -R owner/repo 42
 
 {
   "reviews": [
@@ -139,7 +139,7 @@ gh pr-monitor review view --reviewer octocat --states CHANGES_REQUESTED -R owner
 - **Output schema:** Status payload `{"status": "…"}`. On errors, the command emits `{ "status": "Review submission failed", "errors": [...] }` and exits non-zero.
 
 ```sh
-gh pr-monitor review --submit \
+gh monitor review --submit \
   --review-id PRR_... \
   --event REQUEST_CHANGES \
   --body "Please cover edge cases" \
@@ -161,7 +161,7 @@ gh pr-monitor review --submit \
 - **Output schema:** [`ReplyMinimal`](SCHEMAS.md#replyminimal).
 
 ```sh
-gh pr-monitor comments reply \
+gh monitor comments reply \
   --thread-id PRRT_... \
   --body "Ack" \
   -R owner/repo 42
@@ -180,7 +180,7 @@ gh pr-monitor comments reply \
 - **Output schema:** Array of [`ThreadSummary`](SCHEMAS.md#threadsummary).
 
 ```sh
-gh pr-monitor threads list --unresolved --mine -R owner/repo 42
+gh monitor threads list --unresolved --mine -R owner/repo 42
 
 [
   {
@@ -203,7 +203,7 @@ gh pr-monitor threads list --unresolved --mine -R owner/repo 42
 - **Output schema:** Array of [`ThreadDetail`](SCHEMAS.md#threaddetail).
 
 ```sh
-gh pr-monitor threads view PRRT_... PRRT_... -R owner/repo 42
+gh monitor threads view PRRT_... PRRT_... -R owner/repo 42
 
 [
   {
@@ -236,7 +236,7 @@ gh pr-monitor threads view PRRT_... PRRT_... -R owner/repo 42
 - **Output schema:** [`ThreadMutationResult`](SCHEMAS.md#threadmutationresult).
 
 ```sh
-gh pr-monitor threads resolve --thread-id PRRT_... -R owner/repo 42
+gh monitor threads resolve --thread-id PRRT_... -R owner/repo 42
 
 {
   "thread_node_id": "PRRT_...",
@@ -255,7 +255,7 @@ gh pr-monitor threads resolve --thread-id PRRT_... -R owner/repo 42
 - **Output schema:** Status payload with node_id, reaction, and status.
 
 ```sh
-gh pr-monitor react PRRC_... --type thumbs_up
+gh monitor react PRRC_... --type thumbs_up
 
 {
   "node_id": "PRRC_...",

@@ -1,6 +1,6 @@
 package cmd
 
-import "github.com/elecnix/gh-pr-monitor/internal/ghcli"
+import "github.com/elecnix/gh-monitor/internal/ghcli"
 
 var apiClientFactory = func(host string) ghcli.API {
 	return &ghcli.Client{Host: host}

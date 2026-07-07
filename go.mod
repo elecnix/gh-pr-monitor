@@ -1,4 +1,4 @@
-module github.com/elecnix/gh-pr-monitor
+module github.com/elecnix/gh-monitor
 
 go 1.22
 
