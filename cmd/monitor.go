@@ -17,40 +17,6 @@ import (
 	"github.com/elecnix/gh-pr-monitor/internal/resolver"
 )
 
-func newMonitorCommand() *cobra.Command {
-	opts := &monitorOptions{}
-
-	cmd := &cobra.Command{
-		Use:     "monitor <number> | <url> | --ref <ref> | --commit <sha> | --issue <number>",
-		Aliases: []string{"watch"},
-		Short:   "Continuously watch a pull request and stream events as they happen",
-		Long: `Continuously watch a pull request, emitting one event per genuinely-new
-change: new review threads, general comments, failing/green CI, merge
-conflicts, review decisions, new commits, and merge/close.
-
-By default each event is printed as one NDJSON line on stdout, so a persistent
-watcher (such as Claude Code's Monitor tool wrapping this command) surfaces each
-line as a notification. Use --text to print only the rendered message per line.
-
-Notification wording is templated and user-overridable via the preferences file
-at ${XDG_CONFIG_HOME:-~/.config}/gh-pr-monitor/preferences.json.
-
-The loop auto-stops when the PR is merged or closed. Idle polling backs off
-exponentially (capped at 5 minutes) and resets on any change.`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) > 0 {
-				opts.Selector = args[0]
-			}
-			return runMonitor(cmd, opts)
-		},
-	}
-
-	addMonitorFlags(cmd, opts)
-
-	return cmd
-}
-
 func addMonitorFlags(cmd *cobra.Command, opts *monitorOptions) {
 	cmd.Flags().StringVarP(&opts.Repo, "repo", "R", "", "Repository in 'owner/repo' format")
 	cmd.Flags().IntVar(&opts.Pull, "pr", 0, "Pull request number")

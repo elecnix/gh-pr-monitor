@@ -33,7 +33,6 @@ func newRootCommand() *cobra.Command {
 
 	addMonitorFlags(cmd, monitorOpts)
 
-	cmd.AddCommand(newMonitorCommand())
 	cmd.AddCommand(newCommentsCommand())
 	cmd.AddCommand(newDraftCommand())
 	cmd.AddCommand(newReviewCommand())

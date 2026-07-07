@@ -48,7 +48,7 @@ func TestMonitorOnceEmitsNDJSON(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	root.SetOut(stdout)
 	root.SetErr(&bytes.Buffer{})
-	root.SetArgs([]string{"monitor", "7", "-R", "o/r", "--once"})
+	root.SetArgs([]string{"7", "-R", "o/r", "--once"})
 	require.NoError(t, root.Execute())
 
 	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
@@ -85,7 +85,7 @@ func TestMonitorOnceTextMode(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	root.SetOut(stdout)
 	root.SetErr(&bytes.Buffer{})
-	root.SetArgs([]string{"monitor", "7", "-R", "o/r", "--once", "--text"})
+	root.SetArgs([]string{"7", "-R", "o/r", "--once", "--text"})
 	require.NoError(t, root.Execute())
 
 	out := stdout.String()
@@ -102,7 +102,7 @@ func TestMonitorRequiresPR(t *testing.T) {
 	root := newRootCommand()
 	root.SetOut(&bytes.Buffer{})
 	root.SetErr(&bytes.Buffer{})
-	root.SetArgs([]string{"monitor", "-R", "o/r"})
+	root.SetArgs([]string{"-R", "o/r"})
 	err := root.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "pull request number or URL is required")
@@ -125,43 +125,6 @@ func TestMonitorOnceEmitsNDJSON_DefaultCommand(t *testing.T) {
 	root.SetOut(stdout)
 	root.SetErr(&bytes.Buffer{})
 	root.SetArgs([]string{"7", "-R", "o/r", "--once"})
-	require.NoError(t, root.Execute())
-
-	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
-	require.GreaterOrEqual(t, len(lines), 2)
-	var firstPollSeen, failingSeen bool
-	for _, ln := range lines {
-		var n map[string]interface{}
-		require.NoError(t, json.Unmarshal([]byte(ln), &n), "line not valid json: %s", ln)
-		switch n["type"] {
-		case "first-poll":
-			firstPollSeen = true
-		case "new-failing-checks":
-			failingSeen = true
-			assert.Equal(t, "o/r#7", n["pr_label"])
-		}
-	}
-	assert.True(t, firstPollSeen, "expected a first-poll event")
-	assert.True(t, failingSeen, "expected a new-failing-checks event")
-}
-
-func TestMonitorOnceEmitsNDJSON_WatchAlias(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("GH_HOST", "")
-	originalFactory := apiClientFactory
-	defer func() { apiClientFactory = originalFactory }()
-
-	fake := &commandFakeAPI{graphqlFunc: func(query string, variables map[string]interface{}, result interface{}) error {
-		require.Contains(t, query, "MonitorPR")
-		return assignJSON(result, openPRWithFailingCheck())
-	}}
-	apiClientFactory = func(string) ghcli.API { return fake }
-
-	root := newRootCommand()
-	stdout := &bytes.Buffer{}
-	root.SetOut(stdout)
-	root.SetErr(&bytes.Buffer{})
-	root.SetArgs([]string{"watch", "7", "-R", "o/r", "--once"})
 	require.NoError(t, root.Execute())
 
 	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
@@ -268,7 +231,7 @@ func TestMonitorOnceRefEmitsNDJSON(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	root.SetOut(stdout)
 	root.SetErr(&bytes.Buffer{})
-	root.SetArgs([]string{"monitor", "--ref", "main", "-R", "o/r", "--once"})
+	root.SetArgs([]string{"--ref", "main", "-R", "o/r", "--once"})
 	require.NoError(t, root.Execute())
 
 	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
@@ -307,7 +270,7 @@ func TestMonitorOnceCommitEmitsNDJSON(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	root.SetOut(stdout)
 	root.SetErr(&bytes.Buffer{})
-	root.SetArgs([]string{"monitor", "--commit", "abc123def", "-R", "o/r", "--once"})
+	root.SetArgs([]string{"--commit", "abc123def", "-R", "o/r", "--once"})
 	require.NoError(t, root.Execute())
 
 	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
@@ -339,7 +302,7 @@ func TestMonitorOnceIssueEmitsNDJSON(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	root.SetOut(stdout)
 	root.SetErr(&bytes.Buffer{})
-	root.SetArgs([]string{"monitor", "--issue", "42", "-R", "o/r", "--once"})
+	root.SetArgs([]string{"--issue", "42", "-R", "o/r", "--once"})
 	require.NoError(t, root.Execute())
 
 	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
@@ -364,7 +327,7 @@ func TestMonitorRefRequiresRef(t *testing.T) {
 	root.SetOut(&bytes.Buffer{})
 	root.SetErr(&bytes.Buffer{})
 	// Empty --ref is counted as not set (empty string), so the error is "no target".
-	root.SetArgs([]string{"monitor", "--ref", "", "-R", "o/r"})
+	root.SetArgs([]string{"--ref", "", "-R", "o/r"})
 	err := root.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "pull request number or URL is required")
@@ -386,7 +349,7 @@ func TestMonitorRefWithRepo(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	root.SetOut(stdout)
 	root.SetErr(&bytes.Buffer{})
-	root.SetArgs([]string{"monitor", "--ref", "main", "-R", "o/r", "--once"})
+	root.SetArgs([]string{"--ref", "main", "-R", "o/r", "--once"})
 	require.NoError(t, root.Execute())
 	assert.Contains(t, stdout.String(), "first-poll")
 }
@@ -399,22 +362,22 @@ func TestMonitorMutuallyExclusiveTargets(t *testing.T) {
 	}{
 		{
 			name: "ref and pr",
-			args: []string{"monitor", "--ref", "main", "-R", "o/r", "7"},
+			args: []string{"--ref", "main", "-R", "o/r", "7"},
 			want: "mutually exclusive",
 		},
 		{
 			name: "ref and commit",
-			args: []string{"monitor", "--ref", "main", "--commit", "abc", "-R", "o/r"},
+			args: []string{"--ref", "main", "--commit", "abc", "-R", "o/r"},
 			want: "mutually exclusive",
 		},
 		{
 			name: "ref and issue",
-			args: []string{"monitor", "--ref", "main", "--issue", "42", "-R", "o/r"},
+			args: []string{"--ref", "main", "--issue", "42", "-R", "o/r"},
 			want: "mutually exclusive",
 		},
 		{
 			name: "issue and pr",
-			args: []string{"monitor", "--issue", "42", "-R", "o/r", "7"},
+			args: []string{"--issue", "42", "-R", "o/r", "7"},
 			want: "mutually exclusive",
 		},
 	}
