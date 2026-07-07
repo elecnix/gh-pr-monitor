@@ -33,15 +33,15 @@ You generally do not type the `Monitor(...)` call yourself — you say something
 
 Each NDJSON line has a stable `type` and a rendered `message`, plus event-relevant fields. See [SCHEMAS.md](SCHEMAS.md) for the full field list. Typical agent reactions:
 
-| `type`                     | Suggested reaction                                                                       |
-| -------------------------- | ---------------------------------------------------------------------------------------- |
+| `type`                     | Suggested reaction                                                                    |
+| -------------------------- | ------------------------------------------------------------------------------------- |
 | `new-unresolved-threads`   | Reply to and resolve each thread (`gh monitor comments reply` / `threads resolve`)    |
 | `new-general-comments`     | Address the comment; 👍-react to acknowledge non-actionable ones (`gh monitor react`) |
-| `new-failing-checks`       | Inspect the failing checks and push a fix                                                |
-| `conflict`                 | Rebase / resolve the merge conflict                                                      |
-| `review-changes-requested` | Address the requested changes                                                            |
-| `new-commit`               | Re-check the PR description still reflects the changes                                   |
-| `merged` / `closed`        | Monitoring has stopped — wrap up                                                         |
+| `new-failing-checks`       | Inspect the failing checks and push a fix                                             |
+| `conflict`                 | Rebase / resolve the merge conflict                                                   |
+| `review-changes-requested` | Address the requested changes                                                         |
+| `new-commit`               | Re-check the PR description still reflects the changes                                |
+| `merged` / `closed`        | Monitoring has stopped — wrap up                                                      |
 
 Because 👍 acknowledgment silences a comment, the loop-breaker is: **fix or reply, then react 👍 (or resolve the thread)**, and that item won't notify again.
 
