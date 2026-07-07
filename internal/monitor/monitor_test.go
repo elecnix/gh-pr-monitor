@@ -193,6 +193,45 @@ func TestSnapshot_ReviewDecision(t *testing.T) {
 		s := Snapshot(&PullRequest{}, SnapshotOptions{})
 		assert.Equal(t, "", s.ReviewDecision)
 	})
+	t.Run("later COMMENTED review does not clobber the approval", func(t *testing.T) {
+		// A reviewer approves and then leaves a follow-up COMMENTED review.
+		// COMMENTED is not a decision, so the APPROVED decision must survive
+		// and stay attributed to the approver.
+		pr := &PullRequest{Reviews: ReviewNodes{Nodes: []Review{
+			mkReview("APPROVED", "carol"),
+			mkReview("COMMENTED", "carol"),
+		}}}
+		s := Snapshot(pr, SnapshotOptions{})
+		assert.Equal(t, "APPROVED", s.ReviewDecision)
+		assert.Equal(t, "carol", s.ReviewAuthor)
+	})
+	t.Run("later COMMENTED review by another reviewer does not clobber the approval", func(t *testing.T) {
+		pr := &PullRequest{Reviews: ReviewNodes{Nodes: []Review{
+			mkReview("APPROVED", "carol"),
+			mkReview("COMMENTED", "dave"),
+		}}}
+		s := Snapshot(pr, SnapshotOptions{})
+		assert.Equal(t, "APPROVED", s.ReviewDecision)
+		assert.Equal(t, "carol", s.ReviewAuthor)
+	})
+	t.Run("commented-only review is not a decision", func(t *testing.T) {
+		pr := &PullRequest{Reviews: ReviewNodes{Nodes: []Review{
+			mkReview("COMMENTED", "erin"),
+		}}}
+		s := Snapshot(pr, SnapshotOptions{})
+		assert.Equal(t, "", s.ReviewDecision)
+		assert.Equal(t, "", s.ReviewAuthor)
+	})
+	t.Run("changes requested then later approval wins", func(t *testing.T) {
+		pr := &PullRequest{Reviews: ReviewNodes{Nodes: []Review{
+			mkReview("CHANGES_REQUESTED", "carol"),
+			mkReview("COMMENTED", "carol"),
+			mkReview("APPROVED", "carol"),
+		}}}
+		s := Snapshot(pr, SnapshotOptions{})
+		assert.Equal(t, "APPROVED", s.ReviewDecision)
+		assert.Equal(t, "carol", s.ReviewAuthor)
+	})
 }
 
 func mkReview(state, author string) Review {
