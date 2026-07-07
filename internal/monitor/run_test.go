@@ -104,7 +104,7 @@ func TestRun_NoChangeEmitsNothing(t *testing.T) {
 	err := Run(context.Background(), svc, testRunOptions(), func(n Notification) { got = append(got, n) })
 	require.NoError(t, err)
 
-	assert.Equal(t, []string{firstPollType, string(EventMerged)}, typesOf(got))
+	assert.Equal(t, []string{firstPollType, string(EventNewCommit), string(EventMerged)}, typesOf(got))
 }
 
 func TestRun_ContextCancelStops(t *testing.T) {
@@ -125,9 +125,8 @@ func TestRun_AlreadyMergedAtStartup(t *testing.T) {
 	var got []Notification
 	err := Run(context.Background(), svc, testRunOptions(), func(n Notification) { got = append(got, n) })
 	require.NoError(t, err)
-	// first-poll baseline, then a synthesized terminal notification so the
-	// consumer learns why the stream ends.
-	assert.Equal(t, []string{firstPollType, string(EventMerged)}, typesOf(got))
+	// On first poll, diff against empty baseline surfaces the commit + merged state.
+	assert.Equal(t, []string{firstPollType, string(EventNewCommit), string(EventMerged)}, typesOf(got))
 }
 
 func TestOnce_EmitsCurrentActionable(t *testing.T) {
@@ -241,6 +240,30 @@ func TestRunRef_StreamsCIEvents(t *testing.T) {
 	assert.True(t, commitSeen, "expected new-commit")
 }
 
+func TestRunRef_FirstPollWithFailing_EmitsCIEvent(t *testing.T) {
+	ref := mkRefCommit("abc1234", []string{"build"})
+	api := scriptedRefAPI([]*RefTarget{ref, mkRefCommit("abc1234", nil)})
+	svc := &Service{API: api}
+
+	opts := testRunOptions()
+	opts.Identity = resolver.Identity{Owner: "o", Repo: "r", Ref: "main", Target: "ref", Host: "github.com"}
+
+	var got []Notification
+	ctx, cancel := context.WithCancel(context.Background())
+	opts.Sleep = func(ctx context.Context, d time.Duration) error {
+		cancel()
+		return context.Canceled
+	}
+
+	err := Run(ctx, svc, opts, func(n Notification) { got = append(got, n) })
+	require.True(t, errors.Is(err, context.Canceled) || err == nil)
+
+	types := typesOf(got)
+	assert.Equal(t, firstPollType, types[0])
+	assert.Contains(t, types, string(EventNewFailingChecks))
+	assert.Contains(t, types, string(EventNewCommit))
+}
+
 func TestOnceRef_EmitsCurrentActionable(t *testing.T) {
 	ref := mkRefCommit("abc1234", []string{"build"})
 	svc := &Service{API: scriptedRefAPI([]*RefTarget{ref})}
@@ -280,6 +303,28 @@ func scriptedIssueAPI(responses []*IssueNode) *fakeAPI {
 	}}
 }
 
+func TestRunIssue_FirstPollWithComments_EmitsThem(t *testing.T) {
+	issue := mkIssue("OPEN", []IssueComment{mkIssueComment("c1", "alice", "hey", false)})
+	api := scriptedIssueAPI([]*IssueNode{issue})
+	svc := &Service{API: api}
+
+	opts := testRunOptions()
+	opts.Identity = resolver.Identity{Owner: "o", Repo: "r", Number: 42, Target: "issue", Host: "github.com"}
+	ctx, cancel := context.WithCancel(context.Background())
+	opts.Sleep = func(ctx context.Context, d time.Duration) error {
+		cancel()
+		return context.Canceled
+	}
+
+	var got []Notification
+	err := Run(ctx, svc, opts, func(n Notification) { got = append(got, n) })
+	require.True(t, errors.Is(err, context.Canceled))
+
+	types := typesOf(got)
+	assert.Equal(t, firstPollType, types[0])
+	assert.Contains(t, types, string(EventIssueNewComment))
+}
+
 func TestRunIssue_StreamsEvents(t *testing.T) {
 	api := scriptedIssueAPI([]*IssueNode{
 		mkIssue("OPEN", nil), // baseline
@@ -312,6 +357,85 @@ func TestRunIssue_AlreadyClosedAtStartup(t *testing.T) {
 	err := Run(context.Background(), svc, opts, func(n Notification) { got = append(got, n) })
 	require.NoError(t, err)
 	assert.Equal(t, []string{firstPollType, string(EventIssueClosed)}, typesOf(got))
+}
+
+func TestRun_EmitsExistingIssuesOnFirstPoll(t *testing.T) {
+	pr := &PullRequest{
+		State:     "OPEN",
+		Mergeable: "CONFLICTING",
+		Comments: CommentNodes{Nodes: []Comment{
+			mkComment("c1", "alice", "please review", nil),
+		}},
+		ReviewThreads: ThreadNodes{Nodes: []ReviewThread{{
+			ID:         "t1",
+			IsResolved: false,
+			Comments: CommentNodes{Nodes: []Comment{
+				mkComment("tc1", "bob", "nit: rename", nil),
+			}},
+		}}},
+		Commits: CommitNodes{Nodes: []Commit{mkCommit("abc1234def", []string{"build"})}},
+	}
+	svc := &Service{API: scriptedAPI([]*PullRequest{pr})}
+
+	opts := testRunOptions()
+	ctx, cancel := context.WithCancel(context.Background())
+	opts.Sleep = func(ctx context.Context, d time.Duration) error {
+		cancel()
+		return context.Canceled
+	}
+
+	var got []Notification
+	err := Run(ctx, svc, opts, func(n Notification) { got = append(got, n) })
+	require.True(t, errors.Is(err, context.Canceled))
+
+	types := typesOf(got)
+	assert.Equal(t, firstPollType, types[0])
+	// First poll surfaces all pre-existing issues via diff against empty baseline.
+	assert.Contains(t, types, string(EventConflict))
+	assert.Contains(t, types, string(EventNewFailingChecks))
+	assert.Contains(t, types, string(EventNewUnresolvedThreads))
+	assert.Contains(t, types, string(EventNewGeneralComments))
+	assert.Contains(t, types, string(EventNewCommit))
+}
+
+func TestRun_FirstPollCleanPR_OnlyFirstPoll(t *testing.T) {
+	// PR with no issues: CI passing, no comments, no conflicts → only firstPoll + new-commit.
+	svc := &Service{API: scriptedAPI([]*PullRequest{
+		mkPR("OPEN", false, "aaaaaaa", nil),
+		mkPR("MERGED", true, "aaaaaaa", nil),
+	})}
+
+	var got []Notification
+	err := Run(context.Background(), svc, testRunOptions(), func(n Notification) { got = append(got, n) })
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{firstPollType, string(EventNewCommit), string(EventMerged)}, typesOf(got))
+}
+
+func TestRun_FirstPollPendingCI_NoCIEvent(t *testing.T) {
+	// CI is running (pending) but not failing → no CI event on first poll.
+	pr := mkPR("OPEN", false, "aaaaaaa", nil)
+	pr.Commits.Nodes[0].Commit.CheckSuites = SuiteNodes{Nodes: []CheckSuite{
+		{Status: "IN_PROGRESS", App: AppInfo{Name: "CI"}},
+	}}
+	svc := &Service{API: scriptedAPI([]*PullRequest{pr})}
+
+	opts := testRunOptions()
+	ctx, cancel := context.WithCancel(context.Background())
+	opts.Sleep = func(ctx context.Context, d time.Duration) error {
+		cancel()
+		return context.Canceled
+	}
+
+	var got []Notification
+	err := Run(ctx, svc, opts, func(n Notification) { got = append(got, n) })
+	require.True(t, errors.Is(err, context.Canceled))
+
+	types := typesOf(got)
+	assert.Equal(t, firstPollType, types[0])
+	// No CI events emitted (pending is not failing, and not all-green since prev had no work).
+	assert.NotContains(t, types, string(EventNewFailingChecks))
+	assert.NotContains(t, types, string(EventCIAllGreen))
 }
 
 func TestOnceIssue_EmitsCurrentActionable(t *testing.T) {
