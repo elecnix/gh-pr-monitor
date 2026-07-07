@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/elecnix/gh-pr-monitor/internal/report"
-	"github.com/elecnix/gh-pr-monitor/internal/resolver"
+	"github.com/elecnix/gh-monitor/internal/report"
+	"github.com/elecnix/gh-monitor/internal/resolver"
 )
 
 func newReviewViewCommand() *cobra.Command {

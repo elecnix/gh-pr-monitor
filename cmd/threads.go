@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/elecnix/gh-pr-monitor/internal/resolver"
-	"github.com/elecnix/gh-pr-monitor/internal/threads"
+	"github.com/elecnix/gh-monitor/internal/resolver"
+	"github.com/elecnix/gh-monitor/internal/threads"
 )
 
 func newThreadsCommand() *cobra.Command {

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/elecnix/gh-pr-monitor/internal/prefs"
-	"github.com/elecnix/gh-pr-monitor/internal/resolver"
+	"github.com/elecnix/gh-monitor/internal/prefs"
+	"github.com/elecnix/gh-monitor/internal/resolver"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

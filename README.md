@@ -1,4 +1,4 @@
-# gh-pr-monitor
+# gh-monitor
 
 A GitHub CLI extension for inline PR review comments, thread inspection, and live PR monitoring in the terminal — built to be driven by coding agents such as Claude Code.
 
@@ -28,16 +28,16 @@ GitHub's built-in `gh` tool does not show inline comments, review threads, or th
 ## Installation
 
 ```sh
-gh extension install elecnix/gh-pr-monitor
-gh extension upgrade elecnix/gh-pr-monitor  # Update existing installation
+gh extension install elecnix/gh-monitor
+gh extension upgrade elecnix/gh-monitor  # Update existing installation
 ```
 
 ### Agent Skill
 
-Register with your AI agent using the [SKILL.md](skills/gh-pr-monitor/SKILL.md) definition:
+Register with your AI agent using the [SKILL.md](skills/gh-monitor/SKILL.md) definition:
 
 ```bash
-npx skills add elecnix/gh-pr-monitor
+npx skills add elecnix/gh-monitor
 ```
 
 ## Commands
@@ -84,17 +84,17 @@ See [skills/references/USAGE.md](skills/references/USAGE.md) for detailed usage.
 
 Basic workflow:
 
-1. Start a review: `gh pr-monitor review --start`
-2. Add comments: `gh pr-monitor review --add-comment --review-id <ID> --path <file> --line <N> --body "<msg>"`
-3. Submit review: `gh pr-monitor review --submit --review-id <ID> --event APPROVE`
-4. Resolve threads: `gh pr-monitor threads resolve --thread-id <ID>`
+1. Start a review: `gh monitor review --start`
+2. Add comments: `gh monitor review --add-comment --review-id <ID> --path <file> --line <N> --body "<msg>"`
+3. Submit review: `gh monitor review --submit --review-id <ID> --event APPROVE`
+4. Resolve threads: `gh monitor threads resolve --thread-id <ID>`
 
 ### Adding Reactions
 
 Add reactions to any GitHub node (comments, reviews, etc.):
 
 ```sh
-gh pr-monitor react <comment_id> --type thumbs_up
+gh monitor react <comment_id> --type thumbs_up
 ```
 
 Valid reaction types: `thumbs_up`, `thumbs_down`, `laugh`, `hooray`, `confused`, `heart`, `rocket`, `eyes`
@@ -103,10 +103,10 @@ When inside a git repository, `-R owner/repo` and PR number are inferred automat
 
 ### Viewing Reviews
 
-`gh pr-monitor review view` shows all reviews, inline comments, and replies:
+`gh monitor review view` shows all reviews, inline comments, and replies:
 
 ```sh
-gh pr-monitor review view -R owner/repo --pr 3
+gh monitor review view -R owner/repo --pr 3
 ```
 
 Common filters:
@@ -118,7 +118,7 @@ Common filters:
 Reply to threads using the `thread_id` from the view output:
 
 ```sh
-gh pr-monitor comments reply --thread-id <ID> --body "<msg>"
+gh monitor comments reply --thread-id <ID> --body "<msg>"
 ```
 
 ### Managing Threads
@@ -127,16 +127,16 @@ List and resolve threads:
 
 ```sh
 # List unresolved threads
-gh pr-monitor threads list --unresolved
+gh monitor threads list --unresolved
 
 # List only your threads
-gh pr-monitor threads list --mine
+gh monitor threads list --mine
 
 # Resolve a thread
-gh pr-monitor threads resolve --thread-id <ID>
+gh monitor threads resolve --thread-id <ID>
 
 # View full conversation for specific threads
-gh pr-monitor threads view <thread_id> <thread_id>
+gh monitor threads view <thread_id> <thread_id>
 ```
 
 ### Managing Draft Status
@@ -145,16 +145,16 @@ Check and manage pull request draft status:
 
 ```sh
 # Check if PR is a draft
-gh pr-monitor draft status --repo owner/repo --pr 123
+gh monitor draft status --repo owner/repo --pr 123
 
 # Mark PR as draft
-gh pr-monitor draft mark --repo owner/repo --pr 123
+gh monitor draft mark --repo owner/repo --pr 123
 
 # Mark PR as ready for review
-gh pr-monitor draft ready --repo owner/repo --pr 123
+gh monitor draft ready --repo owner/repo --pr 123
 
 # List all draft PRs in repository
-gh pr-monitor draft list --repo owner/repo
+gh monitor draft list --repo owner/repo
 ```
 
 ### Deleting Comments
@@ -162,27 +162,27 @@ gh pr-monitor draft list --repo owner/repo
 Delete a comment from a pending review:
 
 ```sh
-gh pr-monitor review --delete-comment --comment-id <comment_id>
+gh monitor review --delete-comment --comment-id <comment_id>
 ```
 
 This only works on comments in pending reviews. Once a review is submitted, comments cannot be deleted.
 
 ### Monitoring a PR (streaming)
 
-The default command — invoked as `gh pr-monitor <selector> [flags]` without a subcommand — watches a PR continuously. The `monitor` and `watch` subcommands are also available as explicit forms.
+The default command — invoked as `gh monitor <selector> [flags]` without a subcommand — watches a PR continuously. The `monitor` and `watch` subcommands are also available as explicit forms.
 
 `monitor` runs continuously and emits **one event per genuinely-new change** — new review threads, general comments, failing/green CI, merge conflicts, review decisions, new commits, and merge/close. Each event is one NDJSON line on stdout, so a persistent watcher can surface each line as it arrives. The loop auto-stops when the PR is merged or closed, and idle polling backs off exponentially (capped at 5 minutes).
 
 ```sh
 # Default: stream events until the PR is merged/closed (NDJSON, one event per line)
-gh pr-monitor -R owner/repo 42                    # or: gh pr-monitor monitor 42 -R owner/repo
-gh pr-monitor watch -R owner/repo 42              # alias for 'monitor'
+gh monitor -R owner/repo 42                    # or: gh monitor monitor 42 -R owner/repo
+gh monitor watch -R owner/repo 42              # alias for 'monitor'
 
 # Human-readable rendered messages instead of JSON
-gh pr-monitor monitor --text -R owner/repo 42
+gh monitor monitor --text -R owner/repo 42
 
 # One-shot: emit the current actionable state and exit
-gh pr-monitor monitor --once -R owner/repo 42
+gh monitor monitor --once -R owner/repo 42
 ```
 
 **Monitor flags:**
@@ -197,7 +197,7 @@ gh pr-monitor monitor --once -R owner/repo 42
 
 Set `retriggerComments: true` in the preferences file to re-emit every open unresolved thread and general comment on _each_ poll (instead of only genuinely-new ones). This is chatty and effectively disables the idle backoff, so pair it with a longer `--interval`. Check/CI/review/commit/state events still de-duplicate normally.
 
-Notification wording is templated and user-overridable via `${XDG_CONFIG_HOME:-~/.config}/gh-pr-monitor/preferences.json`.
+Notification wording is templated and user-overridable via `${XDG_CONFIG_HOME:-~/.config}/gh-monitor/preferences.json`.
 
 #### Use with Claude Code
 
@@ -211,7 +211,7 @@ Claude then registers a persistent monitor whose command is this tool:
 
 ```
 Monitor({
-  command: "gh pr-monitor -R owner/repo 42",
+  command: "gh monitor -R owner/repo 42",
   persistent: true,
   description: "PR owner/repo#42 events",
 })

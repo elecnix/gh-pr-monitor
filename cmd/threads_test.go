@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/elecnix/gh-pr-monitor/internal/ghcli"
+	"github.com/elecnix/gh-monitor/internal/ghcli"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

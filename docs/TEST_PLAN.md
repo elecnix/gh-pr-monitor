@@ -1,4 +1,4 @@
-# Test Plan for gh-pr-monitor Extension
+# Test Plan for gh-monitor Extension
 
 ## What to Look For
 
@@ -11,10 +11,10 @@
 ## Create Private Test Repo
 
 ```bash
-gh repo create <username>/gh-pr-monitor-test --private --description "Test repo for gh-pr-monitor extension"
+gh repo create <username>/gh-monitor-test --private --description "Test repo for gh-monitor extension"
 cd /tmp
-git clone git@github.com:<username>/gh-pr-monitor-test.git
-cd gh-pr-monitor-test
+git clone git@github.com:<username>/gh-monitor-test.git
+cd gh-monitor-test
 echo "# Test Repo" > README.md
 git add .
 git commit -m "Initial commit"
@@ -24,42 +24,42 @@ echo "test change" >> README.md
 git add .
 git commit -m "Test change"
 git push -u origin test-branch
-gh pr create --title "Test PR" --body "Test PR for smoke testing gh-pr-monitor"
+gh pr create --title "Test PR" --body "Test PR for smoke testing gh-monitor"
 ```
 
 ## Delete Test Repo
 
 ```bash
 gh auth refresh -h github.com -s delete_repo
-gh repo delete <username>/gh-pr-monitor-test --yes
+gh repo delete <username>/gh-monitor-test --yes
 ```
 
 ## Smoke Testing Commands
 
 ```bash
-gh extension install elecnix/gh-pr-monitor
-cd /tmp/gh-pr-monitor-test
-gh pr-monitor review view --repo <username>/gh-pr-monitor-test --pr 1
-gh pr-monitor review --start --repo <username>/gh-pr-monitor-test --pr 1
-gh pr-monitor review --add-comment --repo <username>/gh-pr-monitor-test --pr 1 --review-id <PRR_ID> --path README.md --line 1 --body "Test comment"
-gh pr-monitor review --edit-comment --repo <username>/gh-pr-monitor-test --pr 1 --comment-id <PRRC_ID> --body "Edited comment"
-gh pr-monitor review --delete-comment --repo <username>/gh-pr-monitor-test --pr 1 --comment-id <PRRC_ID>
-gh pr-monitor comments reply --repo <username>/gh-pr-monitor-test --pr 1 --thread-id <PRRT_ID> --body "Test reply"
-gh pr-monitor threads list --repo <username>/gh-pr-monitor-test --pr 1
-gh pr-monitor threads view <PRRT_ID>
-gh pr-monitor threads resolve --thread-id <PRRT_ID> --repo <username>/gh-pr-monitor-test --pr 1
-gh pr-monitor threads unresolve --thread-id <PRRT_ID> --repo <username>/gh-pr-monitor-test --pr 1
-gh pr-monitor react <PRRC_ID> --type thumbs_up
-gh pr-monitor monitor --once --repo <username>/gh-pr-monitor-test --pr 1
-gh pr-monitor review --submit --repo <username>/gh-pr-monitor-test --pr 1 --review-id <PRR_ID> --event COMMENT --body "Test review submission"
+gh extension install elecnix/gh-monitor
+cd /tmp/gh-monitor-test
+gh monitor review view --repo <username>/gh-monitor-test --pr 1
+gh monitor review --start --repo <username>/gh-monitor-test --pr 1
+gh monitor review --add-comment --repo <username>/gh-monitor-test --pr 1 --review-id <PRR_ID> --path README.md --line 1 --body "Test comment"
+gh monitor review --edit-comment --repo <username>/gh-monitor-test --pr 1 --comment-id <PRRC_ID> --body "Edited comment"
+gh monitor review --delete-comment --repo <username>/gh-monitor-test --pr 1 --comment-id <PRRC_ID>
+gh monitor comments reply --repo <username>/gh-monitor-test --pr 1 --thread-id <PRRT_ID> --body "Test reply"
+gh monitor threads list --repo <username>/gh-monitor-test --pr 1
+gh monitor threads view <PRRT_ID>
+gh monitor threads resolve --thread-id <PRRT_ID> --repo <username>/gh-monitor-test --pr 1
+gh monitor threads unresolve --thread-id <PRRT_ID> --repo <username>/gh-monitor-test --pr 1
+gh monitor react <PRRC_ID> --type thumbs_up
+gh monitor monitor --once --repo <username>/gh-monitor-test --pr 1
+gh monitor review --submit --repo <username>/gh-monitor-test --pr 1 --review-id <PRR_ID> --event COMMENT --body "Test review submission"
 
 # Draft Management Commands
-gh pr-monitor draft status --repo <username>/gh-pr-monitor-test --pr 1
-gh pr-monitor draft mark --repo <username>/gh-pr-monitor-test --pr 1
-gh pr-monitor draft status --repo <username>/gh-pr-monitor-test --pr 1
-gh pr-monitor draft ready --repo <username>/gh-pr-monitor-test --pr 1
-gh pr-monitor draft status --repo <username>/gh-pr-monitor-test --pr 1
-gh pr-monitor draft list --repo <username>/gh-pr-monitor-test
+gh monitor draft status --repo <username>/gh-monitor-test --pr 1
+gh monitor draft mark --repo <username>/gh-monitor-test --pr 1
+gh monitor draft status --repo <username>/gh-monitor-test --pr 1
+gh monitor draft ready --repo <username>/gh-monitor-test --pr 1
+gh monitor draft status --repo <username>/gh-monitor-test --pr 1
+gh monitor draft list --repo <username>/gh-monitor-test
 ```
 
 ## Expected Output Format

@@ -146,7 +146,7 @@ func ConfigPath(baseDir string) (string, error) {
 	return filepath.Join(dir, "preferences.json"), nil
 }
 
-// configDir returns the gh-pr-monitor config directory.
+// configDir returns the gh-monitor config directory.
 func configDir(baseDir string) (string, error) {
 	base := baseDir
 	if base == "" {
@@ -159,7 +159,55 @@ func configDir(baseDir string) (string, error) {
 		}
 		base = filepath.Join(home, ".config")
 	}
+	return filepath.Join(base, "gh-monitor"), nil
+}
+
+// legacyConfigDir returns the old gh-pr-monitor config directory for migration.
+func legacyConfigDir(baseDir string) (string, error) {
+	base := baseDir
+	if base == "" {
+		base = os.Getenv("XDG_CONFIG_HOME")
+	}
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve home dir: %w", err)
+		}
+		base = filepath.Join(home, ".config")
+	}
 	return filepath.Join(base, "gh-pr-monitor"), nil
+}
+
+// resolvePath tries the new config path first, then falls back to the legacy
+// path. If the legacy path is used, a one-time warning is printed to stderr.
+func resolvePath(baseDir string) (string, error) {
+	path, err := ConfigPath(baseDir)
+	if err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(path); err == nil {
+		return path, nil
+	}
+
+	legacy, err := legacyPath(baseDir)
+	if err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(legacy); err == nil {
+		fmt.Fprintf(os.Stderr, "gh-monitor: using legacy config at %s; move to %s to silence this warning\n", legacy, path)
+		return legacy, nil
+	}
+
+	return path, nil
+}
+
+// legacyPath returns the path to the old gh-pr-monitor preferences file.
+func legacyPath(baseDir string) (string, error) {
+	dir, err := legacyConfigDir(baseDir)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "preferences.json"), nil
 }
 
 // storedPreferences is the on-disk shape. Templates uses *string values so a
@@ -181,7 +229,7 @@ type storedPreferences struct {
 func Load(baseDir string) (Preferences, error) {
 	prefs := DefaultPreferences()
 
-	path, err := ConfigPath(baseDir)
+	path, err := resolvePath(baseDir)
 	if err != nil {
 		return prefs, err
 	}
@@ -201,7 +249,7 @@ func Load(baseDir string) (Preferences, error) {
 
 	for key, val := range stored.Templates {
 		if _, ok := defaultTemplates[key]; !ok {
-			fmt.Fprintf(os.Stderr, "gh-pr-monitor: ignoring unknown template key %q in %s\n", key, path)
+			fmt.Fprintf(os.Stderr, "gh-monitor: ignoring unknown template key %q in %s\n", key, path)
 			continue
 		}
 		if val == nil {
@@ -209,7 +257,7 @@ func Load(baseDir string) (Preferences, error) {
 			continue
 		}
 		if !hasToken(*val) {
-			fmt.Fprintf(os.Stderr, "gh-pr-monitor: ignoring templateless value for %q in %s, keeping default\n", key, path)
+			fmt.Fprintf(os.Stderr, "gh-monitor: ignoring templateless value for %q in %s, keeping default\n", key, path)
 			continue
 		}
 		prefs.Templates[key] = *val

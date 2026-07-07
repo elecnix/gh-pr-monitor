@@ -19,8 +19,8 @@ func TestInterpolate(t *testing.T) {
 		{
 			name:     "known tokens replaced",
 			template: "{owner}/{repo}#{number}",
-			vars:     map[string]string{"owner": "elecnix", "repo": "gh-pr-monitor", "number": "42"},
-			expected: "elecnix/gh-pr-monitor#42",
+			vars:     map[string]string{"owner": "elecnix", "repo": "gh-monitor", "number": "42"},
+			expected: "elecnix/gh-monitor#42",
 		},
 		{
 			name:     "unknown token left literal",
@@ -64,11 +64,11 @@ func TestInterpolate(t *testing.T) {
 func TestInterpolateDefaultTemplate(t *testing.T) {
 	got := Interpolate(defaultTemplates["new-commit"], map[string]string{
 		"commitShortOid": "abc1234",
-		"prLabel":        "elecnix/gh-pr-monitor#7",
+		"prLabel":        "elecnix/gh-monitor#7",
 		"commitAuthor":   "octocat",
 	})
 	assert.Contains(t, got, "abc1234")
-	assert.Contains(t, got, "elecnix/gh-pr-monitor#7")
+	assert.Contains(t, got, "elecnix/gh-monitor#7")
 	assert.Contains(t, got, "octocat")
 }
 
@@ -131,7 +131,7 @@ func TestConfigPathXDG(t *testing.T) {
 	base := t.TempDir()
 	path, err := ConfigPath(base)
 	require.NoError(t, err)
-	assert.Equal(t, filepath.Join(base, "gh-pr-monitor", "preferences.json"), path)
+	assert.Equal(t, filepath.Join(base, "gh-monitor", "preferences.json"), path)
 }
 
 func TestConfigPathEnv(t *testing.T) {
@@ -139,7 +139,7 @@ func TestConfigPathEnv(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", base)
 	path, err := ConfigPath("")
 	require.NoError(t, err)
-	assert.Equal(t, filepath.Join(base, "gh-pr-monitor", "preferences.json"), path)
+	assert.Equal(t, filepath.Join(base, "gh-monitor", "preferences.json"), path)
 }
 
 func TestLoadDefaultsWhenMissing(t *testing.T) {
@@ -223,7 +223,7 @@ func TestSaveLeavesNoTempFile(t *testing.T) {
 	base := t.TempDir()
 	require.NoError(t, Save(base, DefaultPreferences()))
 
-	dir := filepath.Join(base, "gh-pr-monitor")
+	dir := filepath.Join(base, "gh-monitor")
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
 	for _, e := range entries {
@@ -239,10 +239,44 @@ func TestTemplateKeysComplete(t *testing.T) {
 	assert.Contains(t, TemplateKeys(), "all-clear")
 }
 
+func TestLoadFallsBackToLegacyPath(t *testing.T) {
+	base := t.TempDir()
+
+	// Write to the LEGACY path only (gh-pr-monitor).
+	legDir := filepath.Join(base, "gh-pr-monitor")
+	require.NoError(t, os.MkdirAll(legDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(legDir, "preferences.json"),
+		[]byte(`{"templates":{"merged":"legacy {prLabel}"}}`), 0o644))
+
+	got, err := Load(base)
+	require.NoError(t, err)
+	assert.Equal(t, "legacy {prLabel}", got.Templates["merged"])
+}
+
+func TestLoadPrefersNewPathOverLegacy(t *testing.T) {
+	base := t.TempDir()
+
+	// Write to the legacy path.
+	legDir := filepath.Join(base, "gh-pr-monitor")
+	require.NoError(t, os.MkdirAll(legDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(legDir, "preferences.json"),
+		[]byte(`{"templates":{"merged":"legacy {prLabel}"}}`), 0o644))
+
+	// Also write to the new path (gh-monitor).
+	newDir := filepath.Join(base, "gh-monitor")
+	require.NoError(t, os.MkdirAll(newDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(newDir, "preferences.json"),
+		[]byte(`{"templates":{"merged":"new {prLabel}"}}`), 0o644))
+
+	got, err := Load(base)
+	require.NoError(t, err)
+	assert.Equal(t, "new {prLabel}", got.Templates["merged"])
+}
+
 // writeStored writes raw JSON to the preferences path under base.
 func writeStored(t *testing.T, base, content string) {
 	t.Helper()
-	dir := filepath.Join(base, "gh-pr-monitor")
+	dir := filepath.Join(base, "gh-monitor")
 	require.NoError(t, os.MkdirAll(dir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "preferences.json"), []byte(content), 0o644))
 }

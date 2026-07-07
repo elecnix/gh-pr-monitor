@@ -1,6 +1,6 @@
-# Using `gh-pr-monitor` with Claude Code
+# Using `gh-monitor` with Claude Code
 
-`gh pr-monitor monitor` is built to be driven by [Claude Code](https://claude.com/claude-code)'s **persistent `Monitor`** tool. The command runs a poll loop and prints **one NDJSON line per genuinely-new change** on a pull request; Claude Code's `Monitor` streams each line back into the session as a notification, so the agent reacts to review comments, CI failures, conflicts, and new commits as they happen — without polling and without burning tokens between events.
+`gh monitor monitor` is built to be driven by [Claude Code](https://claude.com/claude-code)'s **persistent `Monitor`** tool. The command runs a poll loop and prints **one NDJSON line per genuinely-new change** on a pull request; Claude Code's `Monitor` streams each line back into the session as a notification, so the agent reacts to review comments, CI failures, conflicts, and new commits as they happen — without polling and without burning tokens between events.
 
 This mirrors the behavior of the `pi-ghpr-monitor` extension for the `pi` agent, but instead of the tool injecting notifications itself, the CLI does the polling + change-detection and the Claude Code harness does the delivery.
 
@@ -10,7 +10,7 @@ Ask Claude Code to monitor a PR, and it registers a persistent monitor whose com
 
 ```
 Monitor({
-  command: "gh pr-monitor monitor -R owner/repo 42",
+  command: "gh monitor monitor -R owner/repo 42",
   persistent: true,
   description: "PR owner/repo#42 events",
 })
@@ -33,15 +33,15 @@ You generally do not type the `Monitor(...)` call yourself — you say something
 
 Each NDJSON line has a stable `type` and a rendered `message`, plus event-relevant fields. See [SCHEMAS.md](SCHEMAS.md) for the full field list. Typical agent reactions:
 
-| `type`                     | Suggested reaction                                                                       |
-| -------------------------- | ---------------------------------------------------------------------------------------- |
-| `new-unresolved-threads`   | Reply to and resolve each thread (`gh pr-monitor comments reply` / `threads resolve`)    |
-| `new-general-comments`     | Address the comment; 👍-react to acknowledge non-actionable ones (`gh pr-monitor react`) |
-| `new-failing-checks`       | Inspect the failing checks and push a fix                                                |
-| `conflict`                 | Rebase / resolve the merge conflict                                                      |
-| `review-changes-requested` | Address the requested changes                                                            |
-| `new-commit`               | Re-check the PR description still reflects the changes                                   |
-| `merged` / `closed`        | Monitoring has stopped — wrap up                                                         |
+| `type`                     | Suggested reaction                                                                    |
+| -------------------------- | ------------------------------------------------------------------------------------- |
+| `new-unresolved-threads`   | Reply to and resolve each thread (`gh monitor comments reply` / `threads resolve`)    |
+| `new-general-comments`     | Address the comment; 👍-react to acknowledge non-actionable ones (`gh monitor react`) |
+| `new-failing-checks`       | Inspect the failing checks and push a fix                                             |
+| `conflict`                 | Rebase / resolve the merge conflict                                                   |
+| `review-changes-requested` | Address the requested changes                                                         |
+| `new-commit`               | Re-check the PR description still reflects the changes                                |
+| `merged` / `closed`        | Monitoring has stopped — wrap up                                                      |
 
 Because 👍 acknowledgment silences a comment, the loop-breaker is: **fix or reply, then react 👍 (or resolve the thread)**, and that item won't notify again.
 
@@ -50,7 +50,7 @@ Because 👍 acknowledgment silences a comment, the loop-breaker is: **fix or re
 Notification text is templated and user-overridable. Edit:
 
 ```
-${XDG_CONFIG_HOME:-~/.config}/gh-pr-monitor/preferences.json
+${XDG_CONFIG_HOME:-~/.config}/gh-monitor/preferences.json
 ```
 
 Each template is a string with `{token}` placeholders (e.g. `{prLabel}`, `{failingChecks}`, `{commitAuthor}`). A template value with no `{token}` is rejected; set a key to `null` to reset it to the built-in default. Non-template config keys `ignoredBots` (author logins to silence) and `retriggerComments` live in the same file. See the `monitor` section of the [README](../README.md) for the token and key list.
@@ -75,7 +75,7 @@ In `~/.claude/settings.json` (or a project `.claude/settings.json`):
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r 'select(.tool_name==\"Bash\" and (.tool_input.command | test(\"gh pr create\"))) | .tool_response.stdout // \"\"' | grep -oE 'https://github\\.com/[^ ]+/pull/[0-9]+' | head -n1 | sed 's|^|Start monitoring: gh pr-monitor |'"
+            "command": "jq -r 'select(.tool_name==\"Bash\" and (.tool_input.command | test(\"gh pr create\"))) | .tool_response.stdout // \"\"' | grep -oE 'https://github\\.com/[^ ]+/pull/[0-9]+' | head -n1 | sed 's|^|Start monitoring: gh monitor |'"
           }
         ]
       }
@@ -87,7 +87,7 @@ In `~/.claude/settings.json` (or a project `.claude/settings.json`):
 The one-liner reads the hook's JSON payload on stdin: it fires only for a `Bash`
 call whose command contains `gh pr create`, pulls the first `.../pull/<n>` URL
 out of the command's stdout, and emits e.g.
-`Start monitoring: gh pr-monitor https://github.com/owner/repo/pull/42`.
+`Start monitoring: gh monitor https://github.com/owner/repo/pull/42`.
 When the command wasn't a `gh pr create` (or created no PR) the pipeline prints
 nothing and the hook is a no-op.
 

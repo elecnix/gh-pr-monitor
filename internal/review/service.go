@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/elecnix/gh-pr-monitor/internal/ghcli"
-	"github.com/elecnix/gh-pr-monitor/internal/resolver"
+	"github.com/elecnix/gh-monitor/internal/ghcli"
+	"github.com/elecnix/gh-monitor/internal/resolver"
 )
 
 // Service coordinates review GraphQL operations through the gh CLI.

@@ -9,7 +9,7 @@ import (
 
 	_ "embed"
 
-	"github.com/elecnix/gh-pr-monitor/internal/ghcli"
+	"github.com/elecnix/gh-monitor/internal/ghcli"
 )
 
 //go:embed testdata/report_response.json

@@ -4,8 +4,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/elecnix/gh-pr-monitor/internal/ghcli"
-	"github.com/elecnix/gh-pr-monitor/internal/resolver"
+	"github.com/elecnix/gh-monitor/internal/ghcli"
+	"github.com/elecnix/gh-monitor/internal/resolver"
 )
 
 const addThreadReplyMutation = `mutation AddPullRequestReviewThreadReply($input: AddPullRequestReviewThreadReplyInput!) {

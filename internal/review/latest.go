@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elecnix/gh-pr-monitor/internal/resolver"
+	"github.com/elecnix/gh-monitor/internal/resolver"
 )
 
 // LatestOptions configures lookup of the latest submitted review for a reviewer.

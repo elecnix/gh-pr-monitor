@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elecnix/gh-pr-monitor/internal/resolver"
+	"github.com/elecnix/gh-monitor/internal/resolver"
 )
 
 // PendingOptions configures lookup of the latest pending review for a reviewer.

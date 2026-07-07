@@ -15,8 +15,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/elecnix/gh-pr-monitor/internal/ghcli"
-	"github.com/elecnix/gh-pr-monitor/internal/resolver"
+	"github.com/elecnix/gh-monitor/internal/ghcli"
+	"github.com/elecnix/gh-monitor/internal/resolver"
 )
 
 // Service fetches PR monitoring data through the GitHub API.

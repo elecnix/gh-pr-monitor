@@ -3,8 +3,8 @@ package draft
 import (
 	"fmt"
 
-	"github.com/elecnix/gh-pr-monitor/internal/ghcli"
-	"github.com/elecnix/gh-pr-monitor/internal/resolver"
+	"github.com/elecnix/gh-monitor/internal/ghcli"
+	"github.com/elecnix/gh-monitor/internal/resolver"
 )
 
 // Service exposes pull request draft operations.

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elecnix/gh-pr-monitor/internal/prefs"
-	"github.com/elecnix/gh-pr-monitor/internal/resolver"
+	"github.com/elecnix/gh-monitor/internal/prefs"
+	"github.com/elecnix/gh-monitor/internal/resolver"
 )
 
 // firstPollType and allClearType are loop-level notification kinds that are not
@@ -155,7 +155,7 @@ func runPR(ctx context.Context, svc *Service, opts RunOptions, emit func(Notific
 
 		resp, err := svc.Fetch(&opts.Identity, opts.Identity.Number)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "gh-pr-monitor: fetch error: %v\n", err)
+			fmt.Fprintf(os.Stderr, "gh-monitor: fetch error: %v\n", err)
 			errBackoff = nextErrBackoff(errBackoff, base)
 			if serr := opts.sleep(ctx, errBackoff); serr != nil {
 				return serr
@@ -258,7 +258,7 @@ func runRef(ctx context.Context, svc *Service, opts RunOptions, emit func(Notifi
 		case "commit":
 			resp, err := svc.FetchCommit(opts.Identity.Owner, opts.Identity.Repo, opts.Identity.CommitSHA)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "gh-pr-monitor: fetch error: %v\n", err)
+				fmt.Fprintf(os.Stderr, "gh-monitor: fetch error: %v\n", err)
 				errBackoff = nextErrBackoff(errBackoff, base)
 				if serr := opts.sleep(ctx, errBackoff); serr != nil {
 					return serr
@@ -269,7 +269,7 @@ func runRef(ctx context.Context, svc *Service, opts RunOptions, emit func(Notifi
 		default:
 			resp, err := svc.FetchRef(opts.Identity.Owner, opts.Identity.Repo, opts.Identity.Ref)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "gh-pr-monitor: fetch error: %v\n", err)
+				fmt.Fprintf(os.Stderr, "gh-monitor: fetch error: %v\n", err)
 				errBackoff = nextErrBackoff(errBackoff, base)
 				if serr := opts.sleep(ctx, errBackoff); serr != nil {
 					return serr
@@ -363,7 +363,7 @@ func runIssue(ctx context.Context, svc *Service, opts RunOptions, emit func(Noti
 
 		resp, err := svc.FetchIssue(opts.Identity.Owner, opts.Identity.Repo, opts.Identity.Number)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "gh-pr-monitor: fetch error: %v\n", err)
+			fmt.Fprintf(os.Stderr, "gh-monitor: fetch error: %v\n", err)
 			errBackoff = nextErrBackoff(errBackoff, base)
 			if serr := opts.sleep(ctx, errBackoff); serr != nil {
 				return serr

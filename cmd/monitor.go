@@ -12,9 +12,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/elecnix/gh-pr-monitor/internal/monitor"
-	"github.com/elecnix/gh-pr-monitor/internal/prefs"
-	"github.com/elecnix/gh-pr-monitor/internal/resolver"
+	"github.com/elecnix/gh-monitor/internal/monitor"
+	"github.com/elecnix/gh-monitor/internal/prefs"
+	"github.com/elecnix/gh-monitor/internal/resolver"
 )
 
 func addMonitorFlags(cmd *cobra.Command, opts *monitorOptions) {
@@ -106,7 +106,7 @@ func runMonitor(cmd *cobra.Command, opts *monitorOptions) error {
 
 	p, err := prefs.Load("")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "gh-pr-monitor: using default templates (%v)\n", err)
+		fmt.Fprintf(os.Stderr, "gh-monitor: using default templates (%v)\n", err)
 	}
 	for _, bot := range strings.Split(opts.IgnoredBots, ",") {
 		if b := strings.TrimSpace(bot); b != "" {
@@ -149,7 +149,7 @@ func runMonitor(cmd *cobra.Command, opts *monitorOptions) error {
 			return
 		}
 		if err := encodeJSON(cmd, n); err != nil {
-			fmt.Fprintf(os.Stderr, "gh-pr-monitor: %v\n", err)
+			fmt.Fprintf(os.Stderr, "gh-monitor: %v\n", err)
 		}
 	}
 

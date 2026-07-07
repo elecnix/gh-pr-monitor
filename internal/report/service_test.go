@@ -6,7 +6,7 @@ import (
 
 	_ "embed"
 
-	"github.com/elecnix/gh-pr-monitor/internal/resolver"
+	"github.com/elecnix/gh-monitor/internal/resolver"
 )
 
 //go:embed testdata/report_response.json
