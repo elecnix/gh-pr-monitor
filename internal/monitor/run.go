@@ -168,21 +168,25 @@ func runPR(ctx context.Context, svc *Service, opts RunOptions, emit func(Notific
 
 		firstPoll := prev == nil
 		terminalEmitted := false
+		// On the first poll, diff against an empty baseline so all pre-existing
+		// issues (unresolved threads, comments, conflicts, failing checks) are
+		// surfaced immediately.  Subsequent polls diff against the real prev.
+		compare := prev
 		if firstPoll {
+			compare = &PRStatus{}
 			emit(renderNotificationPR(opts, curr, firstPollType, Event{}))
+		}
+		events := diff(compare, curr)
+		for _, ev := range events {
+			emit(renderNotificationPR(opts, curr, string(ev.Type), ev))
+			if ev.Type == EventMerged || ev.Type == EventClosed {
+				terminalEmitted = true
+			}
+		}
+		if len(events) == 0 {
+			noChange++
 		} else {
-			events := diff(prev, curr)
-			for _, ev := range events {
-				emit(renderNotificationPR(opts, curr, string(ev.Type), ev))
-				if ev.Type == EventMerged || ev.Type == EventClosed {
-					terminalEmitted = true
-				}
-			}
-			if len(events) == 0 {
-				noChange++
-			} else {
-				noChange = 0
-			}
+			noChange = 0
 		}
 		prev = curr
 
@@ -281,18 +285,21 @@ func runRef(ctx context.Context, svc *Service, opts RunOptions, emit func(Notifi
 		errBackoff = 0
 
 		firstPoll := prev == nil
+		// On the first poll, diff against an empty baseline so all pre-existing
+		// CI issues are surfaced immediately.
+		compare := prev
 		if firstPoll {
+			compare = &RefStatus{}
 			emit(renderNotificationRef(opts, curr, firstPollType, Event{}))
+		}
+		events := DiffRef(compare, curr)
+		for _, ev := range events {
+			emit(renderNotificationRef(opts, curr, string(ev.Type), ev))
+		}
+		if len(events) == 0 {
+			noChange++
 		} else {
-			events := DiffRef(prev, curr)
-			for _, ev := range events {
-				emit(renderNotificationRef(opts, curr, string(ev.Type), ev))
-			}
-			if len(events) == 0 {
-				noChange++
-			} else {
-				noChange = 0
-			}
+			noChange = 0
 		}
 		prev = curr
 
@@ -376,21 +383,24 @@ func runIssue(ctx context.Context, svc *Service, opts RunOptions, emit func(Noti
 
 		firstPoll := prev == nil
 		terminalEmitted := false
+		// On the first poll, diff against an empty baseline so all pre-existing
+		// comments are surfaced immediately.
+		compare := prev
 		if firstPoll {
+			compare = &IssueStatus{}
 			emit(renderNotificationIssue(opts, curr, firstPollType, Event{}))
+		}
+		events := DiffIssues(compare, curr)
+		for _, ev := range events {
+			emit(renderNotificationIssue(opts, curr, string(ev.Type), ev))
+			if ev.Type == EventIssueClosed {
+				terminalEmitted = true
+			}
+		}
+		if len(events) == 0 {
+			noChange++
 		} else {
-			events := DiffIssues(prev, curr)
-			for _, ev := range events {
-				emit(renderNotificationIssue(opts, curr, string(ev.Type), ev))
-				if ev.Type == EventIssueClosed {
-					terminalEmitted = true
-				}
-			}
-			if len(events) == 0 {
-				noChange++
-			} else {
-				noChange = 0
-			}
+			noChange = 0
 		}
 		prev = curr
 
