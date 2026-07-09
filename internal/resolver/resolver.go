@@ -21,9 +21,10 @@ type Identity struct {
 	Repo      string
 	Host      string
 	Number    int    // PR number or issue number
-	Target    string // "pr" | "ref" | "commit" | "issue"
+	Target    string // "pr" | "ref" | "commit" | "issue" | "run"
 	Ref       string // branch ref for "ref" target
 	CommitSHA string // commit SHA for "commit" target
+	RunID     int    // workflow run id for "run" target
 }
 
 // NormalizeSelector ensures that either an explicit selector or --pr flag is present and mutually consistent.
@@ -104,6 +105,19 @@ func ResolveCommit(sha, repoFlag, host string) (Identity, error) {
 		return Identity{}, fmt.Errorf("--repo: %w", err)
 	}
 	return Identity{Owner: owner, Repo: repo, Host: SanitizeHost(host), CommitSHA: sha, Target: "commit"}, nil
+}
+
+// ResolveRun resolves a GitHub Actions workflow-run target for monitoring.
+// The run id is the numeric id from a run's URL (e.g. .../actions/runs/<id>).
+func ResolveRun(runID int, repoFlag, host string) (Identity, error) {
+	if runID <= 0 {
+		return Identity{}, errors.New("run id must be positive")
+	}
+	owner, repo, err := splitRepo(repoFlag)
+	if err != nil {
+		return Identity{}, fmt.Errorf("--repo: %w", err)
+	}
+	return Identity{Owner: owner, Repo: repo, Host: SanitizeHost(host), RunID: runID, Target: "run"}, nil
 }
 
 // ResolveIssue resolves an issue target for monitoring.

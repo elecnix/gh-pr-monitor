@@ -459,3 +459,117 @@ func TestOnceIssue_EmitsCurrentActionable(t *testing.T) {
 	assert.Equal(t, firstPollType, types[0])
 	assert.Contains(t, types, string(EventIssueNewComment))
 }
+
+// ---------------------------------------------------------------------------
+// Run / Once with workflow-run target
+// ---------------------------------------------------------------------------
+
+func scriptedRunAPI(runs []*WorkflowRun) *fakeAPI {
+	call := 0
+	return &fakeAPI{restFunc: func(method, path string, params map[string]string, body interface{}, result interface{}) error {
+		_ = method
+		_ = path
+		_ = params
+		_ = body
+		idx := call
+		if idx >= len(runs) {
+			idx = len(runs) - 1
+		}
+		call++
+		return assign(result, runs[idx])
+	}}
+}
+
+func runRunOptions() RunOptions {
+	return RunOptions{
+		Identity: resolver.Identity{Owner: "octo", Repo: "demo", RunID: 30433642, Target: "run", Host: "github.com"},
+		Prefs:    prefs.DefaultPreferences(),
+		Interval: 60 * time.Second,
+		Now:      func() time.Time { return time.Unix(0, 0).UTC() },
+		Sleep:    func(context.Context, time.Duration) error { return nil },
+	}
+}
+
+func TestRunRun_StreamsUntilCompleted(t *testing.T) {
+	svc := &Service{API: scriptedRunAPI([]*WorkflowRun{
+		mkWorkflowRun("in_progress", ""), // baseline, running
+		mkWorkflowRun("in_progress", ""), // no change
+		mkWorkflowRun("completed", "success"),
+	})}
+
+	var got []Notification
+	err := Run(context.Background(), svc, runRunOptions(), func(n Notification) { got = append(got, n) })
+	require.NoError(t, err)
+
+	types := typesOf(got)
+	assert.Equal(t, firstPollType, types[0])
+	assert.Equal(t, string(EventRunCompleted), types[len(types)-1])
+
+	var completed *Notification
+	for i := range got {
+		if got[i].Type == string(EventRunCompleted) {
+			completed = &got[i]
+		}
+	}
+	require.NotNil(t, completed)
+	assert.Equal(t, "success", completed.Conclusion)
+	assert.Equal(t, 30433642, completed.RunID)
+	assert.Contains(t, completed.Message, "success")
+	assert.NotEmpty(t, completed.PRUrl)
+}
+
+func TestRunRun_AlreadyCompletedAtStartup(t *testing.T) {
+	svc := &Service{API: scriptedRunAPI([]*WorkflowRun{
+		mkWorkflowRun("completed", "failure"),
+	})}
+
+	var got []Notification
+	err := Run(context.Background(), svc, runRunOptions(), func(n Notification) { got = append(got, n) })
+	require.NoError(t, err)
+
+	types := typesOf(got)
+	assert.Equal(t, firstPollType, types[0])
+	assert.Contains(t, types, string(EventRunCompleted))
+}
+
+func TestRunRun_QueuedThenInProgressThenCompleted(t *testing.T) {
+	svc := &Service{API: scriptedRunAPI([]*WorkflowRun{
+		mkWorkflowRun("queued", ""),
+		mkWorkflowRun("in_progress", ""),
+		mkWorkflowRun("completed", "timed_out"),
+	})}
+
+	var got []Notification
+	err := Run(context.Background(), svc, runRunOptions(), func(n Notification) { got = append(got, n) })
+	require.NoError(t, err)
+
+	types := typesOf(got)
+	assert.Equal(t, firstPollType, types[0])
+	assert.Contains(t, types, string(EventRunInProgress))
+	assert.Contains(t, types, string(EventRunCompleted))
+	assert.Equal(t, string(EventRunCompleted), types[len(types)-1])
+}
+
+func TestRunRun_ContextCancelStops(t *testing.T) {
+	svc := &Service{API: scriptedRunAPI([]*WorkflowRun{mkWorkflowRun("in_progress", "")})}
+	opts := runRunOptions()
+	opts.Sleep = func(context.Context, time.Duration) error { return context.Canceled }
+
+	var got []Notification
+	err := Run(context.Background(), svc, opts, func(n Notification) { got = append(got, n) })
+	assert.ErrorIs(t, err, context.Canceled)
+	require.NotEmpty(t, got)
+	assert.Equal(t, firstPollType, got[0].Type)
+}
+
+func TestOnceRun_EmitsCurrentActionable(t *testing.T) {
+	svc := &Service{API: scriptedRunAPI([]*WorkflowRun{mkWorkflowRun("completed", "success")})}
+
+	var got []Notification
+	err := Once(context.Background(), svc, runRunOptions(), func(n Notification) { got = append(got, n) })
+	require.NoError(t, err)
+
+	types := typesOf(got)
+	assert.Equal(t, firstPollType, types[0])
+	assert.Contains(t, types, string(EventRunCompleted))
+}

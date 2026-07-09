@@ -43,9 +43,12 @@ type Notification struct {
 	// a consumer can act without extra API calls (new-*-threads/comments only).
 	Detail string `json:"detail,omitempty"`
 	// PRUrl and CommitUrl back the OSC-8 links in --text output.
-	PRUrl     string    `json:"pr_url,omitempty"`
-	CommitUrl string    `json:"commit_url,omitempty"`
-	Timestamp time.Time `json:"timestamp"`
+	PRUrl     string `json:"pr_url,omitempty"`
+	CommitUrl string `json:"commit_url,omitempty"`
+	// RunID and Conclusion are set for workflow-run events (run-* types).
+	RunID      int       `json:"run_id,omitempty"`
+	Conclusion string    `json:"conclusion,omitempty"`
+	Timestamp  time.Time `json:"timestamp"`
 }
 
 // RunOptions configures a monitor run.
@@ -105,6 +108,8 @@ func Run(ctx context.Context, svc *Service, opts RunOptions, emit func(Notificat
 		return runRef(ctx, svc, opts, emit)
 	case "issue":
 		return runIssue(ctx, svc, opts, emit)
+	case "run":
+		return runRun(ctx, svc, opts, emit)
 	default:
 		return runPR(ctx, svc, opts, emit)
 	}
@@ -117,6 +122,8 @@ func Once(ctx context.Context, svc *Service, opts RunOptions, emit func(Notifica
 		return onceRef(ctx, svc, opts, emit)
 	case "issue":
 		return onceIssue(ctx, svc, opts, emit)
+	case "run":
+		return onceRun(ctx, svc, opts, emit)
 	default:
 		return oncePR(ctx, svc, opts, emit)
 	}
@@ -704,4 +711,173 @@ func setCommitVars(vars map[string]string, host string, id resolver.Identity, c 
 	if c.Oid != "" {
 		vars["commitUrl"] = fmt.Sprintf("https://%s/%s/%s/commit/%s", host, id.Owner, id.Repo, c.Oid)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Workflow-run target
+// ---------------------------------------------------------------------------
+
+// runRun polls a single GitHub Actions workflow run until it reaches a terminal
+// conclusion (status == "completed"), the context is cancelled, or the timeout
+// elapses. Unlike ref/commit monitoring (which never auto-stops), a run has a
+// clear terminal state and the loop stops once it is reached — mirroring the PR
+// loop's merged/closed exit.
+func runRun(ctx context.Context, svc *Service, opts RunOptions, emit func(Notification)) error {
+	base := opts.Interval
+	if base <= 0 {
+		base = defaultInterval
+	}
+
+	var deadline time.Time
+	if opts.Timeout > 0 {
+		deadline = opts.now().Add(opts.Timeout)
+	}
+
+	var prev *RunStatus
+	noChange := 0
+	errBackoff := time.Duration(0)
+
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		resp, err := svc.FetchRun(opts.Identity.Owner, opts.Identity.Repo, opts.Identity.RunID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gh-monitor: fetch error: %v\n", err)
+			errBackoff = nextErrBackoff(errBackoff, base)
+			if serr := opts.sleep(ctx, errBackoff); serr != nil {
+				return serr
+			}
+			continue
+		}
+		errBackoff = 0
+
+		curr := SnapshotRun(resp)
+
+		firstPoll := prev == nil
+		terminalEmitted := false
+		// On the first poll, diff against an empty baseline so any pre-existing
+		// state (e.g. a run that is already completed) is surfaced immediately.
+		compare := prev
+		if firstPoll {
+			compare = &RunStatus{}
+			emit(renderNotificationRun(opts, curr, firstPollType, Event{}))
+		}
+		events := DiffRun(compare, curr)
+		for _, ev := range events {
+			emit(renderNotificationRun(opts, curr, string(ev.Type), ev))
+			if ev.Type == EventRunCompleted {
+				terminalEmitted = true
+			}
+		}
+		if len(events) == 0 {
+			noChange++
+		} else {
+			noChange = 0
+		}
+		prev = curr
+
+		if curr.IsTerminal() {
+			if firstPoll && !terminalEmitted {
+				emit(renderNotificationRun(opts, curr, string(EventRunCompleted), Event{Type: EventRunCompleted, RunConclusion: curr.Conclusion}))
+			}
+			return nil
+		}
+
+		d := idleInterval(base, noChange)
+		if !deadline.IsZero() {
+			remaining := deadline.Sub(opts.now())
+			if remaining <= 0 {
+				return nil
+			}
+			if d > remaining {
+				d = remaining
+			}
+		}
+		if err := opts.sleep(ctx, d); err != nil {
+			return err
+		}
+	}
+}
+
+func onceRun(ctx context.Context, svc *Service, opts RunOptions, emit func(Notification)) error {
+	resp, err := svc.FetchRun(opts.Identity.Owner, opts.Identity.Repo, opts.Identity.RunID)
+	if err != nil {
+		return err
+	}
+	curr := SnapshotRun(resp)
+	emit(renderNotificationRun(opts, curr, firstPollType, Event{}))
+	for _, ev := range DiffRun(&RunStatus{}, curr) {
+		emit(renderNotificationRun(opts, curr, string(ev.Type), ev))
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Workflow-run notification rendering
+// ---------------------------------------------------------------------------
+
+// renderNotificationRun builds the interpolation vars, renders the template
+// for typ, and populates the structured fields relevant to the run event.
+func renderNotificationRun(opts RunOptions, status *RunStatus, typ string, ev Event) Notification {
+	vars := buildVarsRun(opts.Identity, status, ev, opts.Interval)
+	n := Notification{
+		Type:      typ,
+		PRLabel:   vars["prLabel"],
+		Message:   prefs.Interpolate(opts.Prefs.Templates[typ], vars),
+		Timestamp: opts.now(),
+		PRUrl:     vars["prUrl"],
+	}
+	if status != nil {
+		n.RunID = status.RunID
+		if ev.Type == EventRunCompleted {
+			n.Conclusion = ev.RunConclusion
+		}
+		if status.ShortSHA != "" {
+			n.CommitShortOid = status.ShortSHA
+			n.CommitUrl = vars["commitUrl"]
+		}
+	}
+	return n
+}
+
+func buildVarsRun(id resolver.Identity, status *RunStatus, ev Event, interval time.Duration) map[string]string {
+	host := id.Host
+	if host == "" {
+		host = "github.com"
+	}
+	vars := map[string]string{
+		"owner":       id.Owner,
+		"repo":        id.Repo,
+		"host":        host,
+		"intervalSec": strconv.Itoa(int(interval.Seconds())),
+	}
+
+	if status != nil {
+		vars["runId"] = strconv.Itoa(status.RunID)
+		vars["runName"] = status.Name
+		vars["runNumber"] = strconv.Itoa(status.RunNumber)
+		vars["runEvent"] = status.Event
+		vars["runStatus"] = status.Status
+		vars["runConclusion"] = status.Conclusion
+		vars["runBranch"] = status.HeadBranch
+		vars["runUrl"] = status.HTMLURL
+		vars["prLabel"] = fmt.Sprintf("%s/%s run #%d", id.Owner, id.Repo, status.RunNumber)
+		vars["prUrl"] = status.HTMLURL
+		if status.HeadSHA != "" {
+			vars["commitOid"] = status.HeadSHA
+			vars["commitShortOid"] = status.ShortSHA
+			vars["commitUrl"] = fmt.Sprintf("https://%s/%s/%s/commit/%s", host, id.Owner, id.Repo, status.HeadSHA)
+		}
+	} else {
+		vars["prLabel"] = fmt.Sprintf("%s/%s run #%d", id.Owner, id.Repo, id.RunID)
+		vars["prUrl"] = fmt.Sprintf("https://%s/%s/%s/actions/runs/%d", host, id.Owner, id.Repo, id.RunID)
+	}
+
+	if ev.Type == EventRunCompleted {
+		vars["runConclusion"] = ev.RunConclusion
+	}
+
+	return vars
 }

@@ -46,6 +46,7 @@ npx skills add elecnix/gh-monitor
 | ------------------------------- | ---------------------------------------------------------------- |
 | _(default)_                     | Continuously watch a PR, streaming one event per change (NDJSON) |
 | `monitor` / `watch`             | Continuously watch a PR, streaming one event per change (NDJSON) |
+| `monitor --run-id <id>`         | Watch a single GitHub Actions workflow run until it completes (NDJSON) |
 | `draft status`                  | Check if a pull request is a draft                               |
 | `draft mark`                    | Mark a pull request as draft                                     |
 | `draft ready`                   | Mark a pull request as ready for review                          |
@@ -220,6 +221,25 @@ Monitor({
 The watch runs in the background while Claude works, and **auto-stops** when the PR is merged or closed. To stop it earlier, tell Claude to stop monitoring (it calls `TaskStop`). Because 👍-acknowledged comments are dropped from the stream, the loop-breaker is: reply/fix, then resolve the thread or react 👍 — that item won't notify again.
 
 See [docs/CLAUDE_CODE.md](docs/CLAUDE_CODE.md) for the full guide, the event→reaction mapping, template customization, and a hook that auto-suggests monitoring right after `gh pr create`.
+
+### Monitoring a workflow run
+
+Use `--run-id <id>` to watch a **single GitHub Actions workflow run** until it reaches a terminal conclusion. This works for any non-PR run — deploy workflows on `main`, `workflow_dispatch` runs, scheduled runs, etc. — and is the counterpart to PR CI watching: instead of polling a PR for check suites, it polls the run's `status`/`conclusion` and emits one event per genuinely-new transition (`run-queued`, `run-in-progress`, `run-completed`). The loop **auto-stops** when the run's status becomes `completed`.
+
+The run id is the numeric id in a run's URL: `…/actions/runs/<id>` (also `databaseId` from `gh run list`).
+
+```sh
+# Watch run 30433642 until it completes (NDJSON, one event per line)
+gh monitor --run-id 30433642 -R owner/repo
+
+# One-shot: emit the current state (e.g. a run already finished) and exit
+gh monitor --run-id 30433642 -R owner/repo --once
+
+# Human-readable rendered messages instead of JSON
+gh monitor --run-id 30433642 -R owner/repo --text
+```
+
+The `run-completed` event carries the run's `conclusion` (`success`, `failure`, `timed_out`, `cancelled`, `neutral`, `action_required`, `stale`, `skipped`) as structured JSON, plus `run_id`, the run URL, and the head commit. The same `--interval`, `--timeout`, `--once`, `--text`, and `-R` flags apply. `--run-id` is mutually exclusive with the PR selector and `--ref`/`--commit`/`--issue`.
 
 ### Additional Flags
 

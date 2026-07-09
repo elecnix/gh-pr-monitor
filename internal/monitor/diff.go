@@ -21,6 +21,11 @@ const (
 	EventIssueReopened   EventType = "issue-reopened"
 	EventIssueNewComment EventType = "issue-new-comment"
 	EventIssueMention    EventType = "issue-mention"
+
+	// Workflow-run monitoring events
+	EventRunQueued     EventType = "run-queued"
+	EventRunInProgress EventType = "run-in-progress"
+	EventRunCompleted  EventType = "run-completed"
 )
 
 // Event describes a single genuinely-new change between two snapshots. Only the
@@ -47,6 +52,10 @@ type Event struct {
 
 	// IssueComments holds the new issue comments (EventIssueNewComment, EventIssueMention).
 	IssueComments []IssueCommentSummary `json:"issue_comments,omitempty"`
+
+	// RunConclusion is the terminal conclusion of a workflow run
+	// (EventRunCompleted): success, failure, timed_out, cancelled, etc.
+	RunConclusion string `json:"run_conclusion,omitempty"`
 }
 
 // Diff returns the genuinely-new changes between prev and curr.
@@ -291,4 +300,32 @@ func DiffIssues(prev *IssueStatus, curr *IssueStatus) []Event {
 	}
 
 	return events
+}
+
+// ---------------------------------------------------------------------------
+// DiffRun — diff two RunStatus snapshots (workflow-run monitoring)
+// ---------------------------------------------------------------------------
+
+// DiffRun returns genuinely-new workflow-run events between two snapshots.
+// First-poll (prev == nil) is silent. The run reaches a terminal state when
+// its status becomes "completed"; the conclusion (success, failure, timed_out,
+// cancelled, neutral, action_required, stale, skipped) is carried on the
+// run-completed event.
+func DiffRun(prev, curr *RunStatus) []Event {
+	if prev == nil || curr == nil {
+		return nil
+	}
+	if prev.Status == curr.Status {
+		return nil
+	}
+	switch curr.Status {
+	case "completed":
+		return []Event{{Type: EventRunCompleted, RunConclusion: curr.Conclusion}}
+	case "in_progress":
+		return []Event{{Type: EventRunInProgress}}
+	case "queued":
+		return []Event{{Type: EventRunQueued}}
+	default:
+		return nil
+	}
 }

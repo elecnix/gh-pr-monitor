@@ -14,10 +14,14 @@ import (
 // fakeAPI is an injectable ghcli.API for tests.
 type fakeAPI struct {
 	graphqlFunc func(query string, variables map[string]interface{}, result interface{}) error
+	restFunc    func(method, path string, params map[string]string, body interface{}, result interface{}) error
 }
 
 func (f *fakeAPI) REST(method, path string, params map[string]string, body interface{}, result interface{}) error {
-	return errors.New("unexpected REST call")
+	if f.restFunc == nil {
+		return errors.New("unexpected REST call")
+	}
+	return f.restFunc(method, path, params, body, result)
 }
 
 func (f *fakeAPI) GraphQL(query string, variables map[string]interface{}, result interface{}) error {
