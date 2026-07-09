@@ -353,13 +353,20 @@ Emitted by `monitor` as one NDJSON object per line (one event per genuinely-new 
         "review-dismissed",
         "new-commit",
         "merged",
-        "closed"
+        "closed",
+        "issue-closed",
+        "issue-reopened",
+        "issue-new-comment",
+        "issue-mention",
+        "run-queued",
+        "run-in-progress",
+        "run-completed"
       ],
       "description": "The kind of event"
-    },
+    },,
     "pr_label": {
       "type": "string",
-      "description": "owner/repo#number"
+      "description": "owner/repo#number for PR/issue targets; owner/repo@ref for ref/commit; owner/repo run #N for workflow runs"
     },
     "message": {
       "type": "string",
@@ -401,6 +408,15 @@ Emitted by `monitor` as one NDJSON object per line (one event per genuinely-new 
     "commit_url": {
       "type": "string",
       "description": "Commit web URL, used for the OSC-8 link on the short SHA (new-commit)"
+    },
+    "run_id": {
+      "type": "integer",
+      "description": "GitHub Actions workflow run id (run-* events)"
+    },
+    "conclusion": {
+      "type": "string",
+      "enum": ["success", "failure", "timed_out", "cancelled", "neutral", "action_required", "stale", "skipped"],
+      "description": "Terminal conclusion of a workflow run (run-completed)"
     },
     "timestamp": {
       "type": "string",

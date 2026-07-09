@@ -393,3 +393,82 @@ func TestMonitorMutuallyExclusiveTargets(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Workflow-run monitoring tests
+// ---------------------------------------------------------------------------
+
+func workflowRunJSON(status, conclusion string) obj {
+	return obj{
+		"id":            30433642,
+		"name":          "deploy",
+		"display_title": "Deploy to prod",
+		"event":         "workflow_dispatch",
+		"status":        status,
+		"conclusion":    conclusion,
+		"head_branch":   "main",
+		"head_sha":      "abcdef1234567890",
+		"html_url":      "https://github.com/o/r/actions/runs/30433642",
+		"run_number":    42,
+	}
+}
+
+func TestMonitorOnceRunEmitsNDJSON(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("GH_HOST", "")
+	originalFactory := apiClientFactory
+	defer func() { apiClientFactory = originalFactory }()
+
+	fake := &commandFakeAPI{restFunc: func(method, path string, params map[string]string, body interface{}, result interface{}) error {
+		assert.Equal(t, "GET", method)
+		assert.Equal(t, "repos/o/r/actions/runs/30433642", path)
+		return assignJSON(result, workflowRunJSON("completed", "success"))
+	}}
+	apiClientFactory = func(string) ghcli.API { return fake }
+
+	root := newRootCommand()
+	stdout := &bytes.Buffer{}
+	root.SetOut(stdout)
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"--run-id", "30433642", "-R", "o/r", "--once"})
+	require.NoError(t, root.Execute())
+
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	require.GreaterOrEqual(t, len(lines), 2)
+	var firstPollSeen, completedSeen bool
+	for _, ln := range lines {
+		var n map[string]interface{}
+		require.NoError(t, json.Unmarshal([]byte(ln), &n), "line not valid json: %s", ln)
+		switch n["type"] {
+		case "first-poll":
+			firstPollSeen = true
+		case "run-completed":
+			completedSeen = true
+			assert.Equal(t, "success", n["conclusion"])
+			assert.EqualValues(t, 30433642, n["run_id"])
+		}
+	}
+	assert.True(t, firstPollSeen, "expected a first-poll event")
+	assert.True(t, completedSeen, "expected a run-completed event")
+}
+
+func TestMonitorRunIdZeroRequiresTarget(t *testing.T) {
+	root := newRootCommand()
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	// --run-id 0 is not set, and no other target is given → validation error.
+	root.SetArgs([]string{"--run-id", "0", "-R", "o/r"})
+	err := root.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "pull request number or URL is required")
+}
+
+func TestMonitorRunMutuallyExclusiveWithPR(t *testing.T) {
+	root := newRootCommand()
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"--run-id", "30433642", "-R", "o/r", "7"})
+	err := root.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mutually exclusive")
+}

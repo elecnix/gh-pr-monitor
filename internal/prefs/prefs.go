@@ -49,12 +49,17 @@ var defaultTemplates = map[string]string{
 	"new-commit":               "📝 New commit {commitShortOid} pushed to {prLabel} by {commitAuthor}. Review the PR description to ensure it still reflects the latest changes.",
 	"merged":                   "🔀 PR {prLabel} was merged. Monitoring stopped.",
 	"closed":                   "❌ PR {prLabel} was closed. Monitoring stopped.",
-	"first-poll":               "📡 Monitoring {owner}/{repo}#{number} (polling every {intervalSec}s)",
+	"first-poll":               "📡 Monitoring {prLabel} (polling every {intervalSec}s)",
 	"all-clear":                "✨ {prLabel} — open, all clear",
 	"issue-closed":             "❌ Issue {prLabel} was closed. Monitoring stopped.",
 	"issue-reopened":           "🔄 Issue {prLabel} was reopened.",
 	"issue-new-comment":        "💭 New comment on issue {prLabel}",
 	"issue-mention":            "👋 You were mentioned on issue {prLabel}",
+
+	// Workflow-run monitoring
+	"run-queued":      "⏸️ Workflow run {runName} #{runNumber} on {owner}/{repo} is queued",
+	"run-in-progress": "⏳ Workflow run {runName} #{runNumber} on {owner}/{repo} is now running",
+	"run-completed":   "🏁 Workflow run {runName} #{runNumber} on {owner}/{repo} finished: {runConclusion}",
 }
 
 // DefaultPreferences returns a fresh copy of the built-in defaults.
@@ -94,6 +99,15 @@ var recognizedTokens = map[string]bool{
 	"issueState":            true,
 	"issueTitle":            true,
 	"issueComments":         true,
+
+	"runId":         true,
+	"runName":       true,
+	"runNumber":     true,
+	"runEvent":      true,
+	"runStatus":     true,
+	"runConclusion": true,
+	"runBranch":     true,
+	"runUrl":        true,
 }
 
 // tokenRE matches a single {token} placeholder. The token name is captured.

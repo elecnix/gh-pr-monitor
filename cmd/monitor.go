@@ -23,6 +23,7 @@ func addMonitorFlags(cmd *cobra.Command, opts *monitorOptions) {
 	cmd.Flags().StringVar(&opts.Ref, "ref", "", "Branch or ref to monitor (CI checks only)")
 	cmd.Flags().StringVar(&opts.Commit, "commit", "", "Commit SHA to monitor (CI checks only)")
 	cmd.Flags().IntVar(&opts.Issue, "issue", 0, "Issue number to monitor")
+	cmd.Flags().IntVar(&opts.RunID, "run-id", 0, "GitHub Actions workflow run id to monitor (watches a single run until it completes)")
 	cmd.Flags().IntVarP(&opts.Interval, "interval", "i", 60, "Polling interval in seconds (min 10)")
 	cmd.Flags().IntVarP(&opts.Timeout, "timeout", "t", 0, "Maximum watch time in seconds (0 = run until merged/closed)")
 	cmd.Flags().StringVar(&opts.IgnoredBots, "ignored-bots", "", "Comma-separated author logins whose general comments are ignored")
@@ -36,6 +37,7 @@ type monitorOptions struct {
 	Ref         string
 	Commit      string
 	Issue       int
+	RunID       int
 	Selector    string
 	Interval    int
 	Timeout     int
@@ -66,8 +68,11 @@ func (o *monitorOptions) Validate() error {
 	if o.Issue > 0 {
 		targets++
 	}
+	if o.RunID > 0 {
+		targets++
+	}
 	if targets > 1 {
-		return errors.New("--ref, --commit, --issue, and a PR selector are mutually exclusive")
+		return errors.New("--ref, --commit, --issue, --run-id, and a PR selector are mutually exclusive")
 	}
 	if targets == 0 {
 		return errors.New("pull request number or URL is required")
@@ -92,6 +97,8 @@ func runMonitor(cmd *cobra.Command, opts *monitorOptions) error {
 		identity, err = resolver.ResolveCommit(opts.Commit, opts.Repo, os.Getenv("GH_HOST"))
 	} else if opts.Issue > 0 {
 		identity, err = resolver.ResolveIssue(opts.Issue, opts.Repo, os.Getenv("GH_HOST"))
+	} else if opts.RunID > 0 {
+		identity, err = resolver.ResolveRun(opts.RunID, opts.Repo, os.Getenv("GH_HOST"))
 	} else {
 		inferPR(opts.Selector, &opts.Pull)
 		selector, normErr := resolver.NormalizeSelector(opts.Selector, opts.Pull)

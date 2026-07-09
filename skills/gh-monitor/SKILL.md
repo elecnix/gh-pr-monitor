@@ -113,6 +113,28 @@ Monitor({ command: "gh monitor -R owner/repo 42", persistent: true })
 
 **One-shot check:** `gh monitor monitor --once -R owner/repo <pr>` emits current actionable state and exits (replaces the removed `await` command).
 
+### Monitor a workflow run
+
+Watch a **single GitHub Actions workflow run** until it completes — for any non-PR run (deploy workflows on `main`, `workflow_dispatch`, scheduled runs). The run id is the numeric id in `…/actions/runs/<id>` (`databaseId` from `gh run list`). The loop auto-stops when the run's status becomes `completed`.
+
+```sh
+gh monitor --run-id <id> -R owner/repo          # Watch until complete
+gh monitor --run-id <id> -R owner/repo --once  # One-shot state
+gh monitor --run-id <id> -R owner/repo --text  # Human-readable
+```
+
+Same flags as PR monitoring (`--interval`, `--timeout`, `--once`, `--text`, `-R`). `--run-id` is mutually exclusive with the PR selector and `--ref`/`--commit`/`--issue`.
+
+**Run event types:**
+
+| Type              | Description                                           |
+| ----------------- | ----------------------------------------------------- |
+| `run-queued`      | Run transitioned to `queued`                          |
+| `run-in-progress` | Run transitioned to `in_progress`                     |
+| `run-completed`   | Run finished — `conclusion` field carries the outcome |
+
+The `run-completed` event's `conclusion` is one of: `success`, `failure`, `timed_out`, `cancelled`, `neutral`, `action_required`, `stale`, `skipped`. Each event includes `run_id`, the run URL (`pr_url`), and the head commit.
+
 ## Critical Workflows
 
 ### Claim a Thread Before Working on It

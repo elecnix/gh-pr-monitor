@@ -371,6 +371,79 @@ func (s *Service) FetchCommit(owner, repo, sha string) (*CommitQueryResponse, er
 }
 
 // ---------------------------------------------------------------------------
+// Workflow-run monitoring (GitHub Actions)
+// ---------------------------------------------------------------------------
+
+// WorkflowRun is the relevant subset of a GitHub Actions run returned by the
+// REST endpoint GET /repos/{owner}/{repo}/actions/runs/{run_id}.
+type WorkflowRun struct {
+	ID           int    `json:"id"`
+	Name         string `json:"name"`
+	DisplayTitle string `json:"display_title"`
+	Event        string `json:"event"`
+	Status       string `json:"status"`
+	Conclusion   string `json:"conclusion"`
+	HeadBranch   string `json:"head_branch"`
+	HeadSHA      string `json:"head_sha"`
+	HTMLURL      string `json:"html_url"`
+	RunNumber    int    `json:"run_number"`
+}
+
+// RunStatus is the stable snapshot for a workflow-run target.
+type RunStatus struct {
+	RunID        int    `json:"run_id"`
+	Name         string `json:"name"`
+	DisplayTitle string `json:"display_title"`
+	Event        string `json:"event"`
+	Status       string `json:"status"` // queued | in_progress | completed
+	Conclusion   string `json:"conclusion"`
+	HeadBranch   string `json:"head_branch"`
+	HeadSHA      string `json:"head_sha"`
+	ShortSHA     string `json:"short_sha"`
+	HTMLURL      string `json:"html_url"`
+	RunNumber    int    `json:"run_number"`
+}
+
+// IsTerminal reports whether the run has reached a final state.
+func (r *RunStatus) IsTerminal() bool { return r.Status == "completed" }
+
+// FetchRun retrieves the monitoring snapshot for a single workflow run via the
+// REST API. Unlike the GraphQL PR/ref/issue fetchers, workflow runs are only
+// available over REST.
+func (s *Service) FetchRun(owner, repo string, runID int) (*WorkflowRun, error) {
+	var result WorkflowRun
+	path := fmt.Sprintf("repos/%s/%s/actions/runs/%d", owner, repo, runID)
+	if err := s.API.REST("GET", path, nil, nil, &result); err != nil {
+		return nil, err
+	}
+	if result.ID == 0 {
+		return nil, fmt.Errorf("workflow run %d not found or not accessible", runID)
+	}
+	return &result, nil
+}
+
+// SnapshotRun distills a WorkflowRun into a RunStatus.
+func SnapshotRun(run *WorkflowRun) *RunStatus {
+	short := run.HeadSHA
+	if len(short) > 7 {
+		short = short[:7]
+	}
+	return &RunStatus{
+		RunID:        run.ID,
+		Name:         run.Name,
+		DisplayTitle: run.DisplayTitle,
+		Event:        run.Event,
+		Status:       run.Status,
+		Conclusion:   run.Conclusion,
+		HeadBranch:   run.HeadBranch,
+		HeadSHA:      run.HeadSHA,
+		ShortSHA:     short,
+		HTMLURL:      run.HTMLURL,
+		RunNumber:    run.RunNumber,
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Issue monitoring
 // ---------------------------------------------------------------------------
 

@@ -43,6 +43,19 @@ Each NDJSON line has a stable `type` and a rendered `message`, plus event-releva
 | `new-commit`               | Re-check the PR description still reflects the changes                                |
 | `merged` / `closed`        | Monitoring has stopped — wrap up                                                      |
 
+### Monitoring a workflow run
+
+The same `Monitor` tool can watch a single non-PR GitHub Actions run (deploys on `main`, `workflow_dispatch`, scheduled runs) until it completes. The command auto-stops when the run's `status` becomes `completed`.
+
+```
+Monitor({ command: "gh monitor --run-id 30433642 -R owner/repo", persistent: true })
+```
+
+| `type`            | Suggested reaction                                                                                                                     |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `run-in-progress` | Run started — note it; nothing to do yet                                                                                               |
+| `run-completed`   | Inspect the `conclusion` field. On `failure`/`timed_out`, investigate the run logs and fix; on `success`, proceed with dependent steps |
+
 Because 👍 acknowledgment silences a comment, the loop-breaker is: **fix or reply, then react 👍 (or resolve the thread)**, and that item won't notify again.
 
 ## Customizing the notification wording
