@@ -42,26 +42,26 @@ npx skills add elecnix/gh-monitor
 
 ## Commands
 
-| Command                         | Description                                                      |
-| ------------------------------- | ---------------------------------------------------------------- |
-| _(default)_                     | Continuously watch a PR, streaming one event per change (NDJSON) |
-| `monitor` / `watch`             | Continuously watch a PR, streaming one event per change (NDJSON) |
+| Command                         | Description                                                            |
+| ------------------------------- | ---------------------------------------------------------------------- |
+| _(default)_                     | Continuously watch a PR, streaming one event per change (NDJSON)       |
+| `monitor` / `watch`             | Continuously watch a PR, streaming one event per change (NDJSON)       |
 | `monitor --run-id <id>`         | Watch a single GitHub Actions workflow run until it completes (NDJSON) |
-| `draft status`                  | Check if a pull request is a draft                               |
-| `draft mark`                    | Mark a pull request as draft                                     |
-| `draft ready`                   | Mark a pull request as ready for review                          |
-| `draft list`                    | List all draft pull requests in the repository                   |
-| `review --start`                | Opens a pending review                                           |
-| `review --add-comment`          | Adds inline comment (requires `PRR_…` review node ID)            |
-| `review --edit-comment`         | Updates a comment in a pending review                            |
-| `review --delete-comment`       | Deletes a comment from a pending review                          |
-| `review view`                   | Aggregates reviews, inline comments, and replies                 |
-| `review --submit`               | Finalizes a pending review                                       |
-| `comments reply`                | Replies to a review thread                                       |
-| `react`                         | Adds a reaction to any GitHub node (comments, reviews, etc.)     |
-| `threads list`                  | Lists review threads for the pull request                        |
-| `threads view`                  | View full conversation for specific threads by ID                |
-| `threads resolve` / `unresolve` | Resolves or unresolves review threads                            |
+| `draft status`                  | Check if a pull request is a draft                                     |
+| `draft mark`                    | Mark a pull request as draft                                           |
+| `draft ready`                   | Mark a pull request as ready for review                                |
+| `draft list`                    | List all draft pull requests in the repository                         |
+| `review --start`                | Opens a pending review                                                 |
+| `review --add-comment`          | Adds inline comment (requires `PRR_…` review node ID)                  |
+| `review --edit-comment`         | Updates a comment in a pending review                                  |
+| `review --delete-comment`       | Deletes a comment from a pending review                                |
+| `review view`                   | Aggregates reviews, inline comments, and replies                       |
+| `review --submit`               | Finalizes a pending review                                             |
+| `comments reply`                | Replies to a review thread                                             |
+| `react`                         | Adds a reaction to any GitHub node (comments, reviews, etc.)           |
+| `threads list`                  | Lists review threads for the pull request                              |
+| `threads view`                  | View full conversation for specific threads by ID                      |
+| `threads resolve` / `unresolve` | Resolves or unresolves review threads                                  |
 
 ### Filters
 

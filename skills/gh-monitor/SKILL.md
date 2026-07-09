@@ -127,11 +127,11 @@ Same flags as PR monitoring (`--interval`, `--timeout`, `--once`, `--text`, `-R`
 
 **Run event types:**
 
-| Type             | Description                                         |
-| ---------------- | ------------------------------------------------- |
-| `run-queued`     | Run transitioned to `queued`                          |
-| `run-in-progress`| Run transitioned to `in_progress`                    |
-| `run-completed`  | Run finished — `conclusion` field carries the outcome |
+| Type              | Description                                           |
+| ----------------- | ----------------------------------------------------- |
+| `run-queued`      | Run transitioned to `queued`                          |
+| `run-in-progress` | Run transitioned to `in_progress`                     |
+| `run-completed`   | Run finished — `conclusion` field carries the outcome |
 
 The `run-completed` event's `conclusion` is one of: `success`, `failure`, `timed_out`, `cancelled`, `neutral`, `action_required`, `stale`, `skipped`. Each event includes `run_id`, the run URL (`pr_url`), and the head commit.
 
