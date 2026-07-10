@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -27,8 +28,10 @@ const (
 )
 
 // maxFailedLogLines caps the failed-run log snippet embedded in a
-// run-completed notification (issue #19). The first N lines of `gh run view
-// --log-failed` output are kept; the rest is summarized by a truncation marker.
+// run-completed notification (issue #19). `gh run view --log-failed` emits the
+// full failed-step log chronologically, with the actual error at the END, so we
+// keep the last N lines (the error + its immediate context) rather than the
+// first N — taking the head would capture only setup noise and miss the error.
 const maxFailedLogLines = 50
 
 // runFailureConclusions are the terminal conclusions that mean the run did not
@@ -40,26 +43,60 @@ var runFailureConclusions = map[string]bool{
 // isRunFailureConclusion reports whether a run conclusion is a failure variant.
 func isRunFailureConclusion(c string) bool { return runFailureConclusions[c] }
 
-// truncateLog keeps at most maxLines lines of s and, when more are present,
-// appends a one-line truncation marker noting how many were dropped. A single
-// trailing empty line (from a final "\n") is ignored before counting.
-func truncateLog(s string, maxLines int) string {
-	if s == "" {
-		return ""
+var (
+	// ansiRE strips ANSI/VT100 escape sequences (color codes, cursor moves,
+	// etc.) that `gh run view --log-failed` embeds. It matches both a real ESC
+	// byte (\x1b) and the caret-notation form (`^[[...m`) that gh emits when its
+	// stdout is not a TTY (e.g. when invoked from exec.Command).
+	ansiRE = regexp.MustCompile(`(?:\x1b|\^)\[\[?[0-9;?]*[a-zA-Z]`)
+	// logTsRE strips the per-line leading timestamp (`<RFC3339Nano>Z `) that
+	// `gh run view --log-failed` prefixes each log line with. An optional leading
+	// BOM is tolerated for the first line.
+	logTsRE = regexp.MustCompile(`^\x{feff}?\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s?`)
+)
+
+// cleanFailedLogLine strips the per-line timestamp and ANSI color codes that
+// `gh run view --log-failed` embeds, collapsing the `workflow\tjob\t<ts> <body>`
+// format to `job\t<body>`. The workflow name (field 0) is dropped as redundant
+// (it is the run being watched); the job name is kept so a consumer can tell
+// which job failed. Lines that do not match the format pass through with ANSI
+// stripped only.
+func cleanFailedLogLine(line string) string {
+	line = ansiRE.ReplaceAllString(line, "")
+	fields := strings.SplitN(line, "\t", 3)
+	if len(fields) < 3 {
+		return line
 	}
-	lines := strings.Split(s, "\n")
-	if len(lines) > 0 && lines[len(lines)-1] == "" {
-		lines = lines[:len(lines)-1]
-	}
-	if len(lines) <= maxLines {
-		return strings.Join(lines, "\n")
-	}
-	dropped := len(lines) - maxLines
-	return strings.Join(lines[:maxLines], "\n") +
-		fmt.Sprintf("\n\u2026 (%d more lines truncated)", dropped)
+	return fields[1] + "\t" + logTsRE.ReplaceAllString(fields[2], "")
 }
 
-// failedRunLogDetail fetches and truncates the failed-run log snippet for a
+// summarizeFailedLog cleans and tail-truncates the failed-run log output so the
+// snippet carries the error (which lives at the end of the `--log-failed`
+// output) plus its immediate context. When the cleaned log fits within maxLines
+// it is returned verbatim; otherwise the last maxLines lines are kept, prefixed
+// by a one-line marker noting how many earlier lines were dropped. Empty input
+// yields "".
+func summarizeFailedLog(s string, maxLines int) string {
+	s = strings.TrimPrefix(s, "\ufeff") // strip a leading BOM if present
+	if strings.TrimSpace(s) == "" {
+		return ""
+	}
+	raw := strings.Split(s, "\n")
+	if len(raw) > 0 && raw[len(raw)-1] == "" { // drop trailing empty line from final "\n"
+		raw = raw[:len(raw)-1]
+	}
+	cleaned := make([]string, len(raw))
+	for i, l := range raw {
+		cleaned[i] = cleanFailedLogLine(l)
+	}
+	if len(cleaned) <= maxLines {
+		return strings.Join(cleaned, "\n")
+	}
+	dropped := len(cleaned) - maxLines
+	return fmt.Sprintf("… (%d earlier lines truncated)\n%s", dropped, strings.Join(cleaned[len(cleaned)-maxLines:], "\n"))
+}
+
+// failedRunLogDetail fetches and summarizes the failed-run log snippet for a
 // completed run. A fetch error is logged to stderr and yields an empty detail
 // (the run-completed notification still emits).
 func failedRunLogDetail(svc *Service, id resolver.Identity, runID int) string {
@@ -68,7 +105,7 @@ func failedRunLogDetail(svc *Service, id resolver.Identity, runID int) string {
 		fmt.Fprintf(os.Stderr, "gh-monitor: failed-run log fetch error: %v\n", err)
 		return ""
 	}
-	return truncateLog(out, maxFailedLogLines)
+	return summarizeFailedLog(out, maxFailedLogLines)
 }
 
 // Notification is one emitted event, rendered for a consumer. It serializes to a
