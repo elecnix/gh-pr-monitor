@@ -62,6 +62,7 @@ npx skills add elecnix/gh-monitor
 | `threads list`                  | Lists review threads for the pull request                              |
 | `threads view`                  | View full conversation for specific threads by ID                      |
 | `threads resolve` / `unresolve` | Resolves or unresolves review threads                                  |
+| `prefs`                         | View and edit notification preference templates (get/set/reset/path)   |
 
 ### Filters
 
@@ -198,7 +199,7 @@ gh monitor monitor --once -R owner/repo 42
 
 Set `retriggerComments: true` in the preferences file to re-emit every open unresolved thread and general comment on _each_ poll (instead of only genuinely-new ones). This is chatty and effectively disables the idle backoff, so pair it with a longer `--interval`. Check/CI/review/commit/state events still de-duplicate normally.
 
-Notification wording is templated and user-overridable via `${XDG_CONFIG_HOME:-~/.config}/gh-monitor/preferences.json`.
+Notification wording is templated and user-overridable via `${XDG_CONFIG_HOME:-~/.config}/gh-monitor/preferences.json`. Use the [`prefs`](#managing-preferences) command to view and edit it without touching the file by hand.
 
 #### Use with Claude Code
 
@@ -240,6 +241,31 @@ gh monitor --run-id 30433642 -R owner/repo --text
 ```
 
 The `run-completed` event carries the run's `conclusion` (`success`, `failure`, `timed_out`, `cancelled`, `neutral`, `action_required`, `stale`, `skipped`) as structured JSON, plus `run_id`, the run URL, and the head commit. The same `--interval`, `--timeout`, `--once`, `--text`, and `-R` flags apply. `--run-id` is mutually exclusive with the PR selector and `--ref`/`--commit`/`--issue`.
+
+### Managing preferences
+
+`gh monitor prefs` views and edits the notification templates and config stored in `~/.config/gh-monitor/preferences.json` (the legacy `~/.config/gh-pr-monitor/preferences.json` is read as a fallback). Editing via `prefs` always writes to the canonical path, so it migrates a legacy config on first use.
+
+```sh
+# Print the effective preferences (built-in defaults merged with file overrides)
+gh monitor prefs            # or: gh monitor prefs get
+
+# Merge overrides and save (a null template resets that key to its default)
+gh monitor prefs set '{"templates":{"conflict":"⚠️ {prLabel} conflict!"}}'
+gh monitor prefs set '{"templates":{"merged":null},"ignoredBots":["dependabot"]}'
+
+# Read overrides from a file or stdin
+gh monitor prefs set --file overrides.json
+echo '{"retriggerComments":true}' | gh monitor prefs set --file -
+
+# Reset everything to the built-in defaults
+gh monitor prefs reset
+
+# Show the preferences file path
+gh monitor prefs path
+```
+
+The document shape is `{ "templates": {"<event-kind>": "<template>" | null}, "ignoredBots": ["login", …], "retriggerComments": false }`. Event kinds and template tokens are listed in `gh monitor prefs --help`. A `--config-dir <dir>` flag overrides the config location (handy for testing).
 
 ### Additional Flags
 

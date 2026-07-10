@@ -230,7 +230,7 @@ func legacyPath(baseDir string) (string, error) {
 type storedPreferences struct {
 	Templates         map[string]*string `json:"templates"`
 	IgnoredBots       []string           `json:"ignoredBots"`
-	RetriggerComments *bool              `json:"retriggerComments"`
+	RetriggerComments *bool              `json:"retriggerComments,omitempty"`
 }
 
 // Load starts from DefaultPreferences and overlays the JSON file if present.
@@ -241,50 +241,13 @@ type storedPreferences struct {
 //   - A stored JSON null for a template key resets that key to its default.
 //   - A missing file returns the defaults with no error.
 func Load(baseDir string) (Preferences, error) {
-	prefs := DefaultPreferences()
-
-	path, err := resolvePath(baseDir)
+	stored, err := loadStored(baseDir)
 	if err != nil {
-		return prefs, err
+		// loadStored already returns an empty shape on a missing file, but a
+		// hard read/parse error should still surface with defaults available.
+		return DefaultPreferences(), err
 	}
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return prefs, nil
-		}
-		return prefs, fmt.Errorf("read preferences: %w", err)
-	}
-
-	var stored storedPreferences
-	if err := json.Unmarshal(data, &stored); err != nil {
-		return prefs, fmt.Errorf("parse preferences %s: %w", path, err)
-	}
-
-	for key, val := range stored.Templates {
-		if _, ok := defaultTemplates[key]; !ok {
-			fmt.Fprintf(os.Stderr, "gh-monitor: ignoring unknown template key %q in %s\n", key, path)
-			continue
-		}
-		if val == nil {
-			// null -> reset to default (already present in prefs.Templates).
-			continue
-		}
-		if !hasToken(*val) {
-			fmt.Fprintf(os.Stderr, "gh-monitor: ignoring templateless value for %q in %s, keeping default\n", key, path)
-			continue
-		}
-		prefs.Templates[key] = *val
-	}
-
-	if stored.IgnoredBots != nil {
-		prefs.IgnoredBots = stored.IgnoredBots
-	}
-	if stored.RetriggerComments != nil {
-		prefs.RetriggerComments = *stored.RetriggerComments
-	}
-
-	return prefs, nil
+	return mergeStored(stored), nil
 }
 
 // Save atomically writes p to the preferences file, creating the config dir if
