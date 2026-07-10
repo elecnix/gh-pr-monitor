@@ -17,9 +17,9 @@ func newRootCommand() *cobra.Command {
 	monitorOpts := &monitorOptions{}
 
 	cmd := &cobra.Command{
-		Use:           "gh-monitor [<number> | <url>]",
-		Short:         "PR review helper commands for gh",
-		Long:          "Default command: continuously watch a pull request, emitting one event per genuinely-new change.\n\nRun 'gh monitor --help' for subcommands.",
+		Use:           "gh monitor [<number> | <url>]",
+		Short:         "Watch GitHub PRs, issues, workflow runs, refs, and repos",
+		Long:          "Default command: continuously watch a pull request, emitting one event per genuinely-new change.\n\nWith --repo alone, watches the entire repository for new PRs and issues.\n\nRun 'gh monitor --help' for subcommands.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.MaximumNArgs(1),

@@ -26,6 +26,10 @@ const (
 	EventRunQueued     EventType = "run-queued"
 	EventRunInProgress EventType = "run-in-progress"
 	EventRunCompleted  EventType = "run-completed"
+
+	// Repo monitoring events
+	EventRepoNewPR    EventType = "repo-new-pr"
+	EventRepoNewIssue EventType = "repo-new-issue"
 )
 
 // Event describes a single genuinely-new change between two snapshots. Only the
@@ -56,6 +60,9 @@ type Event struct {
 	// RunConclusion is the terminal conclusion of a workflow run
 	// (EventRunCompleted): success, failure, timed_out, cancelled, etc.
 	RunConclusion string `json:"run_conclusion,omitempty"`
+
+	// RepoItems holds the new PRs or issues (EventRepoNewPR, EventRepoNewIssue).
+	RepoItems []RepoItemSummary `json:"repo_items,omitempty"`
 }
 
 // Diff returns the genuinely-new changes between prev and curr.
@@ -328,4 +335,39 @@ func DiffRun(prev, curr *RunStatus) []Event {
 	default:
 		return nil
 	}
+}
+
+// ---------------------------------------------------------------------------
+// DiffRepo — diff two RepoStatus snapshots (repo monitoring)
+// ---------------------------------------------------------------------------
+
+// DiffRepo returns genuinely-new PR and issue events between two repo snapshots.
+// First-poll (prev == nil) is silent. Items are matched by number; anything in
+// curr not present in prev is emitted as a new event (one event per item).
+func DiffRepo(prev, curr *RepoStatus) []Event {
+	if prev == nil || curr == nil {
+		return nil
+	}
+
+	prevPRs := make(map[int]bool, len(prev.PRs))
+	for _, p := range prev.PRs {
+		prevPRs[p.Number] = true
+	}
+	prevIssues := make(map[int]bool, len(prev.Issues))
+	for _, i := range prev.Issues {
+		prevIssues[i.Number] = true
+	}
+
+	var events []Event
+	for _, p := range curr.PRs {
+		if !prevPRs[p.Number] {
+			events = append(events, Event{Type: EventRepoNewPR, RepoItems: []RepoItemSummary{p}})
+		}
+	}
+	for _, i := range curr.Issues {
+		if !prevIssues[i.Number] {
+			events = append(events, Event{Type: EventRepoNewIssue, RepoItems: []RepoItemSummary{i}})
+		}
+	}
+	return events
 }
