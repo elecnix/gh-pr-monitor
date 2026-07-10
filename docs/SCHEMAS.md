@@ -360,13 +360,15 @@ Emitted by `monitor` as one NDJSON object per line (one event per genuinely-new 
         "issue-mention",
         "run-queued",
         "run-in-progress",
-        "run-completed"
+        "run-completed",
+        "repo-new-pr",
+        "repo-new-issue"
       ],
       "description": "The kind of event"
     },,
     "pr_label": {
       "type": "string",
-      "description": "owner/repo#number for PR/issue targets; owner/repo@ref for ref/commit; owner/repo run #N for workflow runs"
+      "description": "owner/repo#number for PR/issue targets; owner/repo for repo targets (with item labels as owner/repo#N); owner/repo@ref for ref/commit; owner/repo run #N for workflow runs"
     },
     "message": {
       "type": "string",
@@ -417,6 +419,20 @@ Emitted by `monitor` as one NDJSON object per line (one event per genuinely-new 
       "type": "string",
       "enum": ["success", "failure", "timed_out", "cancelled", "neutral", "action_required", "stale", "skipped"],
       "description": "Terminal conclusion of a workflow run (run-completed)"
+    },
+    "repo_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["number", "title", "author", "url"],
+        "properties": {
+          "number": { "type": "integer" },
+          "title": { "type": "string" },
+          "author": { "type": "string" },
+          "url": { "type": "string" }
+        }
+      },
+      "description": "New PRs or issues detected (repo-new-pr, repo-new-issue)"
     },
     "timestamp": {
       "type": "string",

@@ -110,6 +110,8 @@ func Run(ctx context.Context, svc *Service, opts RunOptions, emit func(Notificat
 		return runIssue(ctx, svc, opts, emit)
 	case "run":
 		return runRun(ctx, svc, opts, emit)
+	case "repo":
+		return runRepo(ctx, svc, opts, emit)
 	default:
 		return runPR(ctx, svc, opts, emit)
 	}
@@ -124,6 +126,8 @@ func Once(ctx context.Context, svc *Service, opts RunOptions, emit func(Notifica
 		return onceIssue(ctx, svc, opts, emit)
 	case "run":
 		return onceRun(ctx, svc, opts, emit)
+	case "repo":
+		return onceRepo(ctx, svc, opts, emit)
 	default:
 		return oncePR(ctx, svc, opts, emit)
 	}
@@ -880,4 +884,162 @@ func buildVarsRun(id resolver.Identity, status *RunStatus, ev Event, interval ti
 	}
 
 	return vars
+}
+
+// ---------------------------------------------------------------------------
+// Repo target (watch a repository for new PRs and issues)
+// ---------------------------------------------------------------------------
+
+// runRepo polls a repository for new PRs and issues, emitting events for each
+// new item. Unlike PR/issue targets, repo targets never auto-stop — they run
+// until cancelled or timed out.
+func runRepo(ctx context.Context, svc *Service, opts RunOptions, emit func(Notification)) error {
+	base := opts.Interval
+	if base <= 0 {
+		base = defaultInterval
+	}
+
+	var deadline time.Time
+	if opts.Timeout > 0 {
+		deadline = opts.now().Add(opts.Timeout)
+	}
+
+	var prev *RepoStatus
+	noChange := 0
+	errBackoff := time.Duration(0)
+
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		resp, err := svc.FetchRepo(opts.Identity.Owner, opts.Identity.Repo)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gh-monitor: fetch error: %v\n", err)
+			errBackoff = nextErrBackoff(errBackoff, base)
+			if serr := opts.sleep(ctx, errBackoff); serr != nil {
+				return serr
+			}
+			continue
+		}
+		errBackoff = 0
+
+		curr := SnapshotRepo(resp)
+
+		firstPoll := prev == nil
+		// On the first poll, diff against an empty baseline so all pre-existing
+		// PRs and issues are surfaced immediately.
+		compare := prev
+		if firstPoll {
+			compare = &RepoStatus{}
+			emit(renderNotificationRepo(opts, curr, firstPollType, Event{}))
+		}
+		events := DiffRepo(compare, curr)
+		for _, ev := range events {
+			emit(renderNotificationRepo(opts, curr, string(ev.Type), ev))
+		}
+		if len(events) == 0 {
+			noChange++
+		} else {
+			noChange = 0
+		}
+		prev = curr
+
+		d := idleInterval(base, noChange)
+		if !deadline.IsZero() {
+			remaining := deadline.Sub(opts.now())
+			if remaining <= 0 {
+				return nil
+			}
+			if d > remaining {
+				d = remaining
+			}
+		}
+		if err := opts.sleep(ctx, d); err != nil {
+			return err
+		}
+	}
+}
+
+func onceRepo(ctx context.Context, svc *Service, opts RunOptions, emit func(Notification)) error {
+	resp, err := svc.FetchRepo(opts.Identity.Owner, opts.Identity.Repo)
+	if err != nil {
+		return err
+	}
+	curr := SnapshotRepo(resp)
+	emit(renderNotificationRepo(opts, curr, firstPollType, Event{}))
+	for _, ev := range DiffRepo(&RepoStatus{}, curr) {
+		emit(renderNotificationRepo(opts, curr, string(ev.Type), ev))
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Repo notification rendering
+// ---------------------------------------------------------------------------
+
+func renderNotificationRepo(opts RunOptions, status *RepoStatus, typ string, ev Event) Notification {
+	vars := buildVarsRepo(opts.Identity, status, ev, opts.Interval)
+	n := Notification{
+		Type:      typ,
+		PRLabel:   vars["prLabel"],
+		Message:   prefs.Interpolate(opts.Prefs.Templates[typ], vars),
+		Timestamp: opts.now(),
+	}
+	n.PRUrl = vars["prUrl"]
+	switch EventType(typ) {
+	case EventRepoNewPR, EventRepoNewIssue:
+		if len(ev.RepoItems) > 0 {
+			n.Detail = repoItemsDetail(ev.RepoItems, typ)
+		}
+	}
+	return n
+}
+
+func buildVarsRepo(id resolver.Identity, status *RepoStatus, ev Event, interval time.Duration) map[string]string {
+	host := id.Host
+	if host == "" {
+		host = "github.com"
+	}
+	v := map[string]string{
+		"owner":       id.Owner,
+		"repo":        id.Repo,
+		"host":        host,
+		"prLabel":     fmt.Sprintf("%s/%s", id.Owner, id.Repo),
+		"prUrl":       fmt.Sprintf("https://%s/%s/%s", host, id.Owner, id.Repo),
+		"intervalSec": strconv.Itoa(int(interval.Seconds())),
+	}
+
+	if status != nil {
+		v["repoPRs"] = strconv.Itoa(len(status.PRs))
+		v["repoIssues"] = strconv.Itoa(len(status.Issues))
+	}
+
+	// For individual item events, set the item-specific vars.
+	if len(ev.RepoItems) > 0 {
+		item := ev.RepoItems[0]
+		v["repoItemNumber"] = strconv.Itoa(item.Number)
+		v["repoItemTitle"] = item.Title
+		v["repoItemAuthor"] = item.Author
+		v["repoItemUrl"] = item.URL
+
+		itemLabel := fmt.Sprintf("%s/%s#%d", id.Owner, id.Repo, item.Number)
+		v["prLabel"] = itemLabel
+		v["prUrl"] = item.URL
+	}
+
+	return v
+}
+
+// repoItemsDetail renders a detail body for one or more repo items.
+func repoItemsDetail(items []RepoItemSummary, typ string) string {
+	parts := make([]string, 0, len(items))
+	kind := "PR"
+	if typ == string(EventRepoNewIssue) {
+		kind = "issue"
+	}
+	for _, it := range items {
+		parts = append(parts, fmt.Sprintf("New %s #%d: %s (by %s)\n  %s", kind, it.Number, it.Title, it.Author, it.URL))
+	}
+	return strings.Join(parts, "\n\n")
 }

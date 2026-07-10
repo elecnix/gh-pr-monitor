@@ -913,6 +913,129 @@ type IssueStatus struct {
 	Comments []IssueCommentSummary `json:"comments"`
 }
 
+// ---------------------------------------------------------------------------
+// Repo monitoring (watch a repository for new PRs and issues)
+// ---------------------------------------------------------------------------
+
+// MONITOR_REPO_QUERY fetches the most recently-created PRs and issues for a
+// repository (up to 25 of each), ordered by creation date descending.
+const MONITOR_REPO_QUERY = `query MonitorRepo($owner: String!, $repo: String!, $first: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequests(first: $first, orderBy: {field: CREATED_AT, direction: DESC}) {
+      nodes {
+        number
+        title
+        state
+        url
+        createdAt
+        author { login }
+      }
+    }
+    issues(first: $first, orderBy: {field: CREATED_AT, direction: DESC}) {
+      nodes {
+        number
+        title
+        state
+        url
+        createdAt
+        author { login }
+      }
+    }
+  }
+}`
+
+// RepoQueryResponse mirrors the GraphQL envelope for a repo monitoring query.
+type RepoQueryResponse struct {
+	Repository struct {
+		PullRequests RepoPRNodes    `json:"pullRequests"`
+		Issues       RepoIssueNodes `json:"issues"`
+	} `json:"repository"`
+}
+
+// RepoPRNodes holds the list of repository PRs.
+type RepoPRNodes struct {
+	Nodes []RepoPR `json:"nodes"`
+}
+
+// RepoIssueNodes holds the list of repository issues.
+type RepoIssueNodes struct {
+	Nodes []RepoIssue `json:"nodes"`
+}
+
+// RepoPR is a single pull request from a repo listing.
+type RepoPR struct {
+	Number    int    `json:"number"`
+	Title     string `json:"title"`
+	State     string `json:"state"`
+	URL       string `json:"url"`
+	CreatedAt string `json:"createdAt"`
+	Author    struct {
+		Login string `json:"login"`
+	} `json:"author"`
+}
+
+// RepoIssue is a single issue from a repo listing.
+type RepoIssue struct {
+	Number    int    `json:"number"`
+	Title     string `json:"title"`
+	State     string `json:"state"`
+	URL       string `json:"url"`
+	CreatedAt string `json:"createdAt"`
+	Author    struct {
+		Login string `json:"login"`
+	} `json:"author"`
+}
+
+// RepoItemSummary is a distilled repo item (PR or issue) used in events.
+type RepoItemSummary struct {
+	Number int    `json:"number"`
+	Title  string `json:"title"`
+	Author string `json:"author"`
+	URL    string `json:"url"`
+}
+
+// RepoStatus is the stable snapshot for a repo target.
+type RepoStatus struct {
+	PRs    []RepoItemSummary `json:"prs"`
+	Issues []RepoItemSummary `json:"issues"`
+}
+
+// FetchRepo retrieves the monitoring snapshot for a repository.
+func (s *Service) FetchRepo(owner, repo string) (*RepoQueryResponse, error) {
+	var result RepoQueryResponse
+	err := s.API.GraphQL(MONITOR_REPO_QUERY, map[string]interface{}{
+		"owner": owner,
+		"repo":  repo,
+		"first": 25,
+	}, &result)
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// SnapshotRepo distills a RepoQueryResponse into a RepoStatus.
+func SnapshotRepo(resp *RepoQueryResponse) *RepoStatus {
+	status := &RepoStatus{}
+	for _, p := range resp.Repository.PullRequests.Nodes {
+		status.PRs = append(status.PRs, RepoItemSummary{
+			Number: p.Number,
+			Title:  p.Title,
+			Author: p.Author.Login,
+			URL:    p.URL,
+		})
+	}
+	for _, i := range resp.Repository.Issues.Nodes {
+		status.Issues = append(status.Issues, RepoItemSummary{
+			Number: i.Number,
+			Title:  i.Title,
+			Author: i.Author.Login,
+			URL:    i.URL,
+		})
+	}
+	return status
+}
+
 // SnapshotIssue distills an IssueNode into an IssueStatus.
 func SnapshotIssue(issue *IssueNode, opts SnapshotOptions) *IssueStatus {
 	ignored := make(map[string]bool, len(opts.IgnoredBots))

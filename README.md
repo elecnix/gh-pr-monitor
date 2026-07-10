@@ -47,6 +47,7 @@ npx skills add elecnix/gh-monitor
 | _(default)_                     | Continuously watch a PR, streaming one event per change (NDJSON)       |
 | `monitor` / `watch`             | Continuously watch a PR, streaming one event per change (NDJSON)       |
 | `monitor --run-id <id>`         | Watch a single GitHub Actions workflow run until it completes (NDJSON) |
+| `monitor -R owner/repo`         | Watch a repository for new PRs and issues (NDJSON)                     |
 | `draft status`                  | Check if a pull request is a draft                                     |
 | `draft mark`                    | Mark a pull request as draft                                           |
 | `draft ready`                   | Mark a pull request as ready for review                                |
@@ -241,6 +242,26 @@ gh monitor --run-id 30433642 -R owner/repo --text
 ```
 
 The `run-completed` event carries the run's `conclusion` (`success`, `failure`, `timed_out`, `cancelled`, `neutral`, `action_required`, `stale`, `skipped`) as structured JSON, plus `run_id`, the run URL, and the head commit. The same `--interval`, `--timeout`, `--once`, `--text`, and `-R` flags apply. `--run-id` is mutually exclusive with the PR selector and `--ref`/`--commit`/`--issue`.
+
+### Monitoring a repository for new PRs and issues
+
+Use `--repo` alone (without a PR number, ref, commit, issue, or run-id) to watch an **entire repository** for new PRs and issues. The loop polls the repository and emits a `repo-new-pr` or `repo-new-issue` event for each genuinely-new item. Unlike PR/issue/run targets, repo targets never auto-stop — they run until cancelled or timed out.
+
+```sh
+# Watch a repo for new PRs and issues (NDJSON, one event per line)
+gh monitor -R owner/repo
+
+# One-shot: emit the current state and exit
+gh monitor -R owner/repo --once
+
+# Human-readable rendered messages instead of JSON
+gh monitor -R owner/repo --text
+
+# With a timeout (stops after 1 hour)
+gh monitor -R owner/repo --timeout 3600
+```
+
+Each event carries the item's number, title, author, and URL in the `repo_items` array. Templates for `repo-new-pr` and `repo-new-issue` are configurable via `prefs`.
 
 ### Managing preferences
 

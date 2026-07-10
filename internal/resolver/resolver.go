@@ -120,6 +120,16 @@ func ResolveRun(runID int, repoFlag, host string) (Identity, error) {
 	return Identity{Owner: owner, Repo: repo, Host: SanitizeHost(host), RunID: runID, Target: "run"}, nil
 }
 
+// ResolveRepo resolves a repository target for monitoring (watches for new PRs
+// and issues).
+func ResolveRepo(repoFlag, host string) (Identity, error) {
+	owner, repo, err := splitRepo(repoFlag)
+	if err != nil {
+		return Identity{}, fmt.Errorf("--repo: %w", err)
+	}
+	return Identity{Owner: owner, Repo: repo, Host: SanitizeHost(host), Target: "repo"}, nil
+}
+
 // ResolveIssue resolves an issue target for monitoring.
 func ResolveIssue(number int, repoFlag, host string) (Identity, error) {
 	if number <= 0 {

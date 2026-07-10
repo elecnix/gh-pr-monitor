@@ -99,10 +99,12 @@ func TestMonitorOnceTextMode(t *testing.T) {
 }
 
 func TestMonitorRequiresPR(t *testing.T) {
+	// --repo alone is now valid for repo monitoring, but a bare command with no
+	// flags at all still requires a PR number or other target.
 	root := newRootCommand()
 	root.SetOut(&bytes.Buffer{})
 	root.SetErr(&bytes.Buffer{})
-	root.SetArgs([]string{"-R", "o/r"})
+	root.SetArgs([]string{})
 	err := root.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "pull request number or URL is required")
@@ -143,6 +145,64 @@ func TestMonitorOnceEmitsNDJSON_DefaultCommand(t *testing.T) {
 	}
 	assert.True(t, firstPollSeen, "expected a first-poll event")
 	assert.True(t, failingSeen, "expected a new-failing-checks event")
+}
+
+func TestMonitorRepoOnceEmitsNDJSON(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("GH_HOST", "")
+	originalFactory := apiClientFactory
+	defer func() { apiClientFactory = originalFactory }()
+
+	fake := &commandFakeAPI{graphqlFunc: func(query string, variables map[string]interface{}, result interface{}) error {
+		require.Contains(t, query, "MonitorRepo")
+		return assignJSON(result, obj{
+			"repository": obj{
+				"pullRequests": obj{"nodes": []interface{}{obj{
+					"number":    1,
+					"title":     "feat: add x",
+					"state":     "OPEN",
+					"url":       "https://github.com/o/r/pull/1",
+					"createdAt": "2024-01-01T00:00:00Z",
+					"author":    obj{"login": "alice"},
+				}}},
+				"issues": obj{"nodes": []interface{}{obj{
+					"number":    42,
+					"title":     "bug report",
+					"state":     "OPEN",
+					"url":       "https://github.com/o/r/issues/42",
+					"createdAt": "2024-01-01T00:00:00Z",
+					"author":    obj{"login": "bob"},
+				}}},
+			},
+		})
+	}}
+	apiClientFactory = func(string) ghcli.API { return fake }
+
+	root := newRootCommand()
+	stdout := &bytes.Buffer{}
+	root.SetOut(stdout)
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"-R", "o/r", "--once"})
+	require.NoError(t, root.Execute())
+
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	require.GreaterOrEqual(t, len(lines), 2)
+	var firstPollSeen, newPRSeen, newIssueSeen bool
+	for _, ln := range lines {
+		var n map[string]interface{}
+		require.NoError(t, json.Unmarshal([]byte(ln), &n), "line not valid json: %s", ln)
+		switch n["type"] {
+		case "first-poll":
+			firstPollSeen = true
+		case "repo-new-pr":
+			newPRSeen = true
+		case "repo-new-issue":
+			newIssueSeen = true
+		}
+	}
+	assert.True(t, firstPollSeen, "expected a first-poll event")
+	assert.True(t, newPRSeen, "expected a repo-new-pr event")
+	assert.True(t, newIssueSeen, "expected a repo-new-issue event")
 }
 
 func TestRootRejectsTooManyArgs(t *testing.T) {
@@ -323,14 +383,16 @@ func TestMonitorOnceIssueEmitsNDJSON(t *testing.T) {
 }
 
 func TestMonitorRefRequiresRef(t *testing.T) {
+	// Empty --ref with no other target triggers repo monitoring (valid).
+	// Ref monitoring requires a non-empty ref value.
+	// This test verifies that --ref and --issue together are mutually exclusive.
 	root := newRootCommand()
 	root.SetOut(&bytes.Buffer{})
 	root.SetErr(&bytes.Buffer{})
-	// Empty --ref is counted as not set (empty string), so the error is "no target".
-	root.SetArgs([]string{"--ref", "", "-R", "o/r"})
+	root.SetArgs([]string{"--ref", "main", "--issue", "42", "-R", "o/r"})
 	err := root.Execute()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "pull request number or URL is required")
+	assert.Contains(t, err.Error(), "mutually exclusive")
 }
 
 func TestMonitorRefWithRepo(t *testing.T) {
@@ -453,11 +515,12 @@ func TestMonitorOnceRunEmitsNDJSON(t *testing.T) {
 }
 
 func TestMonitorRunIdZeroRequiresTarget(t *testing.T) {
+	// --run-id 0 with --repo alone is now valid repo monitoring (run-id 0 = unset).
+	// No target at all should still error.
 	root := newRootCommand()
 	root.SetOut(&bytes.Buffer{})
 	root.SetErr(&bytes.Buffer{})
-	// --run-id 0 is not set, and no other target is given → validation error.
-	root.SetArgs([]string{"--run-id", "0", "-R", "o/r"})
+	root.SetArgs([]string{"--run-id", "0"})
 	err := root.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "pull request number or URL is required")

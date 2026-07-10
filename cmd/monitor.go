@@ -71,6 +71,12 @@ func (o *monitorOptions) Validate() error {
 	if o.RunID > 0 {
 		targets++
 	}
+	// Repo-only (--repo without any other target) is its own target kind.
+	repoOnly := o.Repo != "" && o.Selector == "" && o.Pull == 0 && o.Ref == "" && o.Commit == "" && o.Issue == 0 && o.RunID == 0
+	if repoOnly {
+		// Repo monitoring: valid on its own; no conflict with other targets.
+		return nil
+	}
 	if targets > 1 {
 		return errors.New("--ref, --commit, --issue, --run-id, and a PR selector are mutually exclusive")
 	}
@@ -99,6 +105,8 @@ func runMonitor(cmd *cobra.Command, opts *monitorOptions) error {
 		identity, err = resolver.ResolveIssue(opts.Issue, opts.Repo, os.Getenv("GH_HOST"))
 	} else if opts.RunID > 0 {
 		identity, err = resolver.ResolveRun(opts.RunID, opts.Repo, os.Getenv("GH_HOST"))
+	} else if opts.Repo != "" && opts.Selector == "" && opts.Ref == "" && opts.Commit == "" && opts.Issue == 0 && opts.RunID == 0 {
+		identity, err = resolver.ResolveRepo(opts.Repo, os.Getenv("GH_HOST"))
 	} else {
 		inferPR(opts.Selector, &opts.Pull)
 		selector, normErr := resolver.NormalizeSelector(opts.Selector, opts.Pull)

@@ -60,6 +60,10 @@ var defaultTemplates = map[string]string{
 	"run-queued":      "⏸️ Workflow run {runName} #{runNumber} on {owner}/{repo} is queued",
 	"run-in-progress": "⏳ Workflow run {runName} #{runNumber} on {owner}/{repo} is now running",
 	"run-completed":   "🏁 Workflow run {runName} #{runNumber} on {owner}/{repo} finished: {runConclusion}",
+
+	// Repo monitoring
+	"repo-new-pr":    "🆕 New PR {repoItemNumber}: {repoItemTitle} by {repoItemAuthor} in {prLabel}",
+	"repo-new-issue": "🆕 New issue {repoItemNumber}: {repoItemTitle} by {repoItemAuthor} in {prLabel}",
 }
 
 // DefaultPreferences returns a fresh copy of the built-in defaults.
@@ -108,6 +112,13 @@ var recognizedTokens = map[string]bool{
 	"runConclusion": true,
 	"runBranch":     true,
 	"runUrl":        true,
+
+	"repoPRs":        true,
+	"repoIssues":     true,
+	"repoItemNumber": true,
+	"repoItemTitle":  true,
+	"repoItemAuthor": true,
+	"repoItemUrl":    true,
 }
 
 // tokenRE matches a single {token} placeholder. The token name is captured.
