@@ -239,7 +239,7 @@ gh monitor --run-id 30433642 -R owner/repo --once
 gh monitor --run-id 30433642 -R owner/repo --text
 ```
 
-The `run-completed` event carries the run's `conclusion` (`success`, `failure`, `timed_out`, `cancelled`, `neutral`, `action_required`, `stale`, `skipped`) as structured JSON, plus `run_id`, the run URL, and the head commit. The same `--interval`, `--timeout`, `--once`, `--text`, and `-R` flags apply. `--run-id` is mutually exclusive with the PR selector and `--ref`/`--commit`/`--issue`.
+The `run-completed` event carries the run's `conclusion` (`success`, `failure`, `timed_out`, `cancelled`, `neutral`, `action_required`, `stale`, `skipped`) as structured JSON, plus `run_id`, the run URL, and the head commit. When the conclusion is a failure variant (`failure`, `timed_out`, `cancelled`, `action_required`), the event also carries a `detail` body with a truncated snippet of the failed-job logs (the first 50 lines of `gh run view <run-id> --log-failed`), so an agent can diagnose the failure without an extra turn. The same `--interval`, `--timeout`, `--once`, `--text`, and `-R` flags apply. `--run-id` is mutually exclusive with the PR selector and `--ref`/`--commit`/`--issue`.
 
 ### Additional Flags
 

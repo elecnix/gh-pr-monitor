@@ -26,6 +26,51 @@ const (
 	defaultInterval = 60 * time.Second
 )
 
+// maxFailedLogLines caps the failed-run log snippet embedded in a
+// run-completed notification (issue #19). The first N lines of `gh run view
+// --log-failed` output are kept; the rest is summarized by a truncation marker.
+const maxFailedLogLines = 50
+
+// runFailureConclusions are the terminal conclusions that mean the run did not
+// succeed and therefore warrant a failed-log snippet.
+var runFailureConclusions = map[string]bool{
+	"failure": true, "timed_out": true, "cancelled": true, "action_required": true,
+}
+
+// isRunFailureConclusion reports whether a run conclusion is a failure variant.
+func isRunFailureConclusion(c string) bool { return runFailureConclusions[c] }
+
+// truncateLog keeps at most maxLines lines of s and, when more are present,
+// appends a one-line truncation marker noting how many were dropped. A single
+// trailing empty line (from a final "\n") is ignored before counting.
+func truncateLog(s string, maxLines int) string {
+	if s == "" {
+		return ""
+	}
+	lines := strings.Split(s, "\n")
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	if len(lines) <= maxLines {
+		return strings.Join(lines, "\n")
+	}
+	dropped := len(lines) - maxLines
+	return strings.Join(lines[:maxLines], "\n") +
+		fmt.Sprintf("\n\u2026 (%d more lines truncated)", dropped)
+}
+
+// failedRunLogDetail fetches and truncates the failed-run log snippet for a
+// completed run. A fetch error is logged to stderr and yields an empty detail
+// (the run-completed notification still emits).
+func failedRunLogDetail(svc *Service, id resolver.Identity, runID int) string {
+	out, err := svc.FailedRunLogs(id.Owner, id.Repo, runID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gh-monitor: failed-run log fetch error: %v\n", err)
+		return ""
+	}
+	return truncateLog(out, maxFailedLogLines)
+}
+
 // Notification is one emitted event, rendered for a consumer. It serializes to a
 // single NDJSON line; a persistent watcher (e.g. Claude Code's Monitor tool)
 // surfaces each line as a session notification.
@@ -766,7 +811,11 @@ func runRun(ctx context.Context, svc *Service, opts RunOptions, emit func(Notifi
 		}
 		events := DiffRun(compare, curr)
 		for _, ev := range events {
-			emit(renderNotificationRun(opts, curr, string(ev.Type), ev))
+			n := renderNotificationRun(opts, curr, string(ev.Type), ev)
+			if ev.Type == EventRunCompleted && isRunFailureConclusion(ev.RunConclusion) {
+				n.Detail = failedRunLogDetail(svc, opts.Identity, curr.RunID)
+			}
+			emit(n)
 			if ev.Type == EventRunCompleted {
 				terminalEmitted = true
 			}
@@ -780,7 +829,12 @@ func runRun(ctx context.Context, svc *Service, opts RunOptions, emit func(Notifi
 
 		if curr.IsTerminal() {
 			if firstPoll && !terminalEmitted {
-				emit(renderNotificationRun(opts, curr, string(EventRunCompleted), Event{Type: EventRunCompleted, RunConclusion: curr.Conclusion}))
+				ev := Event{Type: EventRunCompleted, RunConclusion: curr.Conclusion}
+				n := renderNotificationRun(opts, curr, string(EventRunCompleted), ev)
+				if isRunFailureConclusion(curr.Conclusion) {
+					n.Detail = failedRunLogDetail(svc, opts.Identity, curr.RunID)
+				}
+				emit(n)
 			}
 			return nil
 		}
@@ -809,7 +863,11 @@ func onceRun(ctx context.Context, svc *Service, opts RunOptions, emit func(Notif
 	curr := SnapshotRun(resp)
 	emit(renderNotificationRun(opts, curr, firstPollType, Event{}))
 	for _, ev := range DiffRun(&RunStatus{}, curr) {
-		emit(renderNotificationRun(opts, curr, string(ev.Type), ev))
+		n := renderNotificationRun(opts, curr, string(ev.Type), ev)
+		if ev.Type == EventRunCompleted && isRunFailureConclusion(ev.RunConclusion) {
+			n.Detail = failedRunLogDetail(svc, opts.Identity, curr.RunID)
+		}
+		emit(n)
 	}
 	return nil
 }

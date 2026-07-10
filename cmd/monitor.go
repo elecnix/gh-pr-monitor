@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/elecnix/gh-monitor/internal/ghcli"
 	"github.com/elecnix/gh-monitor/internal/monitor"
 	"github.com/elecnix/gh-monitor/internal/prefs"
 	"github.com/elecnix/gh-monitor/internal/resolver"
@@ -122,6 +123,11 @@ func runMonitor(cmd *cobra.Command, opts *monitorOptions) error {
 	}
 
 	svc := &monitor.Service{API: apiClientFactory(identity.Host)}
+	// Wire the failed-run log fetcher (issue #19) so run-completed
+	// notifications for failed runs embed a `gh run view --log-failed` snippet.
+	if c, ok := svc.API.(*ghcli.Client); ok {
+		svc.FailedRunLogsFn = c.FailedRunLogs
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
