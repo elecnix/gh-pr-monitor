@@ -39,6 +39,7 @@ func newRootCommand() *cobra.Command {
 	cmd.AddCommand(newThreadsCommand())
 
 	cmd.AddCommand(newReactCommand())
+	cmd.AddCommand(newPrefsCommand())
 	return cmd
 }
 

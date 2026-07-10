@@ -1,0 +1,154 @@
+package cmd
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"os"
+
+	"github.com/spf13/cobra"
+
+	"github.com/elecnix/gh-monitor/internal/prefs"
+)
+
+// newPrefsCommand builds the `prefs` command tree for viewing and editing
+// notification preferences. The bare `gh monitor prefs` (no subcommand) is an
+// alias for `prefs get`.
+func newPrefsCommand() *cobra.Command {
+	opts := &prefsOptions{}
+
+	cmd := &cobra.Command{
+		Use:   "prefs",
+		Short: "View and edit notification preferences",
+		Long: `View and edit notification preference templates.
+
+Preferences are stored as JSON at the path shown by 'gh monitor prefs path'
+(~/.config/gh-monitor/preferences.json by default; the legacy
+~/.config/gh-pr-monitor/preferences.json is read as a fallback).
+
+The document shape:
+  {
+    "templates":         { "<event-kind>": "<template>" | null, ... },
+    "ignoredBots":       ["login", ...],
+    "retriggerComments": false
+  }
+
+A null template value resets that key to its built-in default. Event kinds
+include: new-unresolved-threads, new-general-comments, conflict,
+new-failing-checks, ci-all-green, review-approved, review-changes-requested,
+review-dismissed, new-commit, merged, closed, first-poll, all-clear,
+issue-closed, issue-reopened, issue-new-comment, issue-mention, run-queued,
+run-in-progress, run-completed.
+
+Template tokens: {owner} {repo} {number} {host} {prLabel} {prUrl}
+{unresolvedThreads} {generalComments} {failingChecks} {conflict} {intervalSec}
+{reviewAuthor} {commitOid} {commitShortOid} {commitUrl} {commitAuthor}
+{commitCoauthors} {commitMessageHeadline} {issueState} {issueTitle}
+{issueComments} {runId} {runName} {runNumber} {runEvent} {runStatus}
+{runConclusion} {runBranch} {runUrl}.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runPrefsGet(cmd, opts)
+		},
+	}
+
+	cmd.PersistentFlags().StringVar(&opts.ConfigDir, "config-dir", "", "Directory holding preferences.json (defaults to XDG_CONFIG_HOME/gh-monitor)")
+
+	cmd.AddCommand(newPrefsGetCommand(opts))
+	cmd.AddCommand(newPrefsSetCommand(opts))
+	cmd.AddCommand(newPrefsResetCommand(opts))
+	cmd.AddCommand(newPrefsPathCommand(opts))
+
+	return cmd
+}
+
+type prefsOptions struct {
+	ConfigDir string
+}
+
+func newPrefsGetCommand(opts *prefsOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   "get",
+		Short: "Print the effective preferences as JSON",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runPrefsGet(cmd, opts)
+		},
+	}
+}
+
+func runPrefsGet(cmd *cobra.Command, opts *prefsOptions) error {
+	p, err := prefs.Load(opts.ConfigDir)
+	if err != nil {
+		return err
+	}
+	return encodeJSON(cmd, p)
+}
+
+func newPrefsSetCommand(opts *prefsOptions) *cobra.Command {
+	var file string
+	cmd := &cobra.Command{
+		Use:   "set [<json>]",
+		Short: "Merge preference overrides (JSON) into the file and print the result",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var data []byte
+			switch {
+			case file == "-":
+				b, err := io.ReadAll(os.Stdin)
+				if err != nil {
+					return fmt.Errorf("read stdin: %w", err)
+				}
+				data = b
+			case file != "":
+				b, err := os.ReadFile(file)
+				if err != nil {
+					return fmt.Errorf("read --file: %w", err)
+				}
+				data = b
+			case len(args) == 1:
+				data = []byte(args[0])
+			default:
+				return errors.New("provide a JSON argument or use --file (use '-' for stdin)")
+			}
+			eff, err := prefs.UpdateFile(opts.ConfigDir, data)
+			if err != nil {
+				return err
+			}
+			return encodeJSON(cmd, eff)
+		},
+	}
+	cmd.Flags().StringVar(&file, "file", "", "Read overrides from a file (use '-' for stdin)")
+	return cmd
+}
+
+func newPrefsResetCommand(opts *prefsOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   "reset",
+		Short: "Reset preferences to the built-in defaults",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			eff, err := prefs.ResetFile(opts.ConfigDir)
+			if err != nil {
+				return err
+			}
+			return encodeJSON(cmd, eff)
+		},
+	}
+}
+
+func newPrefsPathCommand(opts *prefsOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   "path",
+		Short: "Print the preferences file path",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			p, err := prefs.FilePath(opts.ConfigDir)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), p)
+			return nil
+		},
+	}
+}
