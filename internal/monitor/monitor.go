@@ -22,6 +22,23 @@ import (
 // Service fetches PR monitoring data through the GitHub API.
 type Service struct {
 	API ghcli.API
+
+	// FailedRunLogsFn returns the failed-run log output for a workflow run —
+	// typically the stdout of `gh run view <run-id> --log-failed`, which
+	// combines each failing job's name with its error log lines. It is optional:
+	// when nil, run-completed notifications for failed runs carry no log
+	// snippet. Production code wires this to ghcli.Client.FailedRunLogs via cmd.
+	FailedRunLogsFn func(owner, repo string, runID int) (string, error)
+}
+
+// FailedRunLogs returns the failed-run log output for a workflow run, or ""
+// with a nil error when no fetcher is configured (so callers can invoke it
+// unconditionally without guarding the optional field).
+func (s *Service) FailedRunLogs(owner, repo string, runID int) (string, error) {
+	if s.FailedRunLogsFn == nil {
+		return "", nil
+	}
+	return s.FailedRunLogsFn(owner, repo, runID)
 }
 
 // MONITOR_QUERY fetches the rich snapshot a monitor needs for a single PR:

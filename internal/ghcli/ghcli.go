@@ -244,6 +244,27 @@ func CurrentPR() (int, error) {
 	return n, nil
 }
 
+// FailedRunLogs returns the failed-job log output for a workflow run by
+// delegating to `gh run view <runID> --log-failed`. The output combines each
+// failing job's name with its error log lines, so a consumer can diagnose a
+// failed run without an extra API call. Returns an empty string when there is
+// no failed output (e.g. the run succeeded).
+//
+// The repository is passed as `[HOST/]OWNER/REPO` so enterprise hosts are
+// honored; github.com is left bare to match `gh`'s default resolution.
+func (c *Client) FailedRunLogs(owner, repo string, runID int) (string, error) {
+	repoArg := owner + "/" + repo
+	if host := strings.TrimSpace(c.Host); host != "" && host != "github.com" {
+		repoArg = host + "/" + repoArg
+	}
+	args := []string{"run", "view", strconv.Itoa(runID), "--repo", repoArg, "--log-failed"}
+	stdout, stderr, err := runGh(args, nil)
+	if err != nil {
+		return "", wrapError(err, stdout, stderr)
+	}
+	return string(stdout), nil
+}
+
 // runGh executes the `gh` CLI command with provided arguments and optional stdin data.
 func runGh(args []string, stdin []byte) ([]byte, string, error) {
 	cmd := exec.Command("gh", args...)
